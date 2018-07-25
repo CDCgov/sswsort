@@ -1,0 +1,224 @@
+#!/bin/bash
+# Filename:         SSWSORT
+# Description:      Classification of gene segments / genomes by Smith-Waterman
+#
+# Date dedicated:   2022-07-19
+# Author:           Samuel S. Shepard, Centers for Disease Control and Prevention
+#
+# Citation:         Unpublished
+#
+# =============================================================================
+#
+#                            PUBLIC DOMAIN NOTICE
+#
+#  This source code file or script constitutes a work of the United States
+#  Government and is not subject to domestic copyright protection under 17 USC §
+#  105. This file is in the public domain within the United States, and
+#  copyright and related rights in the work worldwide are waived through the CC0
+#  1.0 Universal public domain dedication:
+#  https://creativecommons.org/publicdomain/zero/1.0/
+#
+#  The material embodied in this software is provided to you "as-is" and without
+#  warranty of any kind, express, implied or otherwise, including without
+#  limitation, any warranty of fitness for a particular purpose. In no event
+#  shall the Centers for Disease Control and Prevention (CDC) or the United
+#  States (U.S.) government be liable to you or anyone else for any direct,
+#  special, incidental, indirect or consequential damages of any kind, or any
+#  damages whatsoever, including without limitation, loss of profit, loss of
+#  use, savings or revenue, or the claims of third parties, whether or not CDC
+#  or the U.S. government has been advised of the possibility of such loss,
+#  however caused and on any theory of liability, arising out of or in
+#  connection with the possession, use or performance of this software.
+#
+#  Please provide appropriate attribution in any work or product based on this
+#  material.
+
+PROG=$(basename "$0" .sh)
+VERSION="v1.4"
+AUTHOR="S.S. Shepard"
+DATE="2022.07"
+
+if [ "$#" -ne "3" ] && [ "$#" -ne "2" ]; then
+    echo -e "\n$PROG $VERSION by $AUTHOR ($DATE)"
+    echo -e "\nUsage:"
+    echo -e "\t\t$PROG <ref> <query> <output_file>\n"
+    exit 1
+fi
+
+# Base path for program
+bpath=
+if [ "$bpath" == "" ]; then
+    bpath=$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+fi
+source "$bpath/bin/utils.sh"
+
+# Process defaults
+LANG=POSIX
+BASH=bash
+SINGLE_LOCAL_PROC=${IFX_LOCAL_PROCS:-16}
+GRID_PROCS=${IFX_GRID_PROCS:-140}
+GRID_ON=${IFX_GRID_DEF:-0}
+LIMIT_SSW=500 # threshold before grid
+SSW_M=2   # smith-waterman match score
+SSW_X=5   # smith-waterman mismatch penalty
+SSW_O=10  # smith-waterman gap open penalty
+SSW_E=1   # smith-waterman gap extension penalty
+SSW_OPTS="-x $SSW_X -m $SSW_M -o $SSW_O -e $SSW_E"
+
+# Process arguments
+REF=$1
+QUERY=$2
+[ "$#" -eq "3" ] && OUTPUT_FILE=$3
+
+# FNC - ERROR TEST #
+# Idea courtesy: steve-parker.org/sh/exitcodes.shtml
+function err_test() {
+    if [ "$1" -ne "0" ]; then
+        echo ""
+        if [ $# -eq "1" ]; then
+            echo "$PROG ERROR: operations have been ABORTED!"
+        else
+            echo "$PROG ERROR ($2): operations have been ABORTED!"
+        fi
+        exit 1
+    fi
+}
+
+# Idea courtesy: stackoverflow.com/questions/592620/check-if-a-program-exists-from-a-bash-script
+function check_prgm() {
+    command -v "$1" > /dev/null 2>&1 || die "'$1' not found, add to the PATH or install."
+}
+###########################
+
+check_prgm perl
+
+# Check for qsub
+if [ "$GRID_ON" -eq "1" ]; then
+    if ! command -v qsub > /dev/null 2>&1; then
+        time_stamp "No 'qsub' command found. Switching to GRID_ON=0 for local computation."
+        GRID_ON=0
+    fi
+fi
+
+command -v "git" > /dev/null 2>&1 \
+    && tmp_git=$(cd "$bpath" && git describe) \
+    && [ "$tmp_git" != "" ] \
+    && VERSION=$tmp_git
+
+# Find reference set
+MEDIANS=""
+THRESHOLDS=""
+PRESET=$(basename "$REF")
+if [ -s "$bpath/presets/${REF}.fasta" ]; then
+    TMP=$(echo "$REF" | cut -f1 -d'-')
+
+    # Source is valid
+    # shellcheck disable=SC1090
+    [ -s "$bpath/presets/${TMP}.config.txt" ] && source "$bpath/presets/${TMP}.config.txt"
+    # shellcheck disable=SC1090
+    [ -s "$bpath/presets/${REF}.config.txt" ] && source "$bpath/presets/${REF}.config.txt"
+    [ -s "$bpath/presets/${TMP}.medians.txt" ] && MEDIANS="-L $bpath/presets/${TMP}.medians.txt"
+    [ -s "$bpath/presets/${REF}.medians.txt" ] && MEDIANS="-L $bpath/presets/${REF}.medians.txt"
+    REF=$bpath/presets/${REF}.fasta
+else
+    [ -s "$REF" ] || die "Cannot find reference '$REF'."
+fi
+NAME=$(basename "$(basename "$(basename "$REF" .fasta)" .fas)" .fa)
+
+# Which OS?
+OS="Linux"
+command -v uname > /dev/null 2>&1 && OS=$(uname -s)
+if [ "$OS" != "Linux" ] && [ "$OS" != "Darwin" ]; then
+    time_stamp "Your $OS OS not yet supported."
+    exit 0
+fi
+
+# Set Executables
+PARALLEL="$bpath/bin/parallel --will-cite"
+SSW=$bpath/bin/ssw_$OS
+
+# Create working path
+workdir=$(mktemp -d "$bpath"/workdir/XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX)
+[ -d "$workdir" ] || die "Could not create working directory under $bpath"
+
+# Function
+function doSSW() {
+    local refDB=$1
+    local queryDB=$2
+    local name=$3
+    local workdir=$4
+    local procs=$5
+    local limit=$6
+    local doGrid=0
+    local script=$workdir/${name}
+
+    local n=$(grep '>' "$queryDB" -c)
+    time_stamp "$n sequences found"
+
+    if [ "$n" -gt "$limit" ] && [ "$GRID_ON" -eq "1" ]; then
+        doGrid=1
+    elif [ "$n" -ge "$SINGLE_LOCAL_PROC" ]; then
+        procs=$SINGLE_LOCAL_PROC
+    else
+        procs=1
+    fi
+
+    ###
+    cat > "${script}.sh" << EOL
+#!/bin/bash
+LANG=$LANG
+shopt -u nocaseglob;shopt -u nocasematch
+
+if [ "\$#" -eq "1" ];then
+	ID=\$(printf %04d \$1)
+else
+	ID=\$(printf %04d \$SGE_TASK_ID)
+fi
+FASTA=$workdir/${name}_\$ID.fasta
+SAM=$workdir/${name}_\$ID.sam
+
+$SSW -r -s -c $SSW_OPTS $refDB \$FASTA | cut -f1-4,6,12  > \$SAM 2> /dev/null
+$bpath/bin/classifySAM.pl $THRESHOLDS $MEDIANS -A \$SAM \$FASTA > \$SAM.best
+EOL
+    ###
+
+    # ASSEMBLE on grid vs local
+    chmod 755 "${script}.sh"
+    "$bpath"/bin/interleavedSamples.pl -U -G $procs <(cat "$queryDB") "$workdir/$name" > "${script}.2.o" 2>&1 || warn "partitioning failed!"
+    if [ "$doGrid" -eq "1" ]; then
+        # IRMA_QUEUE can be empty
+        # shellcheck disable=SC2086
+        qsub ${IRMA_QUEUE:-""} -t 1-$procs:1 -N "N$name" -sync y -wd "$workdir" -j y -o "${script}.o" "${script}.sh" >> "${script}.2.o" 2>&1 \
+            || {
+                cat "${script}.o" \
+                    && time_stamp "qsub of 'N$name' failed. Switching to master node." \
+                    && $PARALLEL --workdir "$workdir" -j $SINGLE_LOCAL_PROC $BASH "${script}.sh" {} ::: $(seq $procs) >> "${script}.2.o" 2>&1 \
+                    || warn "PARALLEL failed, showing errors: $(cat "${script}.2.o")"
+            }
+    else
+        $PARALLEL --workdir "$workdir" -j "$procs" $BASH "${script}.sh" {} ::: $(seq $procs) >> "${script}.2.o" 2>&1 \
+            || warn "PARALLEL failed, showing errors: $(cat "${script}.2.o")"
+    fi
+}
+
+# Run sort and clean up
+if [ -p "$QUERY" ]; then
+    cat "$QUERY" > "$workdir/.original.fa"
+    QUERY=$workdir/.original.fa
+    time_stamp "Doing sort on STDIN data with '$(basename "$REF")'."
+else
+    time_stamp "Doing sort on '$(basename "$QUERY")' with '$(basename "$REF")'."
+fi
+
+doSSW "$REF" "$QUERY" "$NAME" "$workdir" "$GRID_PROCS" "$LIMIT_SSW" || die "failed"
+
+if [ "$#" -eq "3" ]; then
+    perl "$bpath"/bin/addFields.pl -P "$PROG $VERSION" -M "$PRESET" "$workdir/${NAME}"_????.sam.best > "$OUTPUT_FILE"
+else
+    perl "$bpath"/bin/addFields.pl -P "$PROG $VERSION" -M "$PRESET" "$workdir/${NAME}"_????.sam.best
+fi
+
+rm -rf "$workdir"
+time_stamp "finished"
+
+exit 0

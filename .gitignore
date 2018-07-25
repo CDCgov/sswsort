@@ -1,0 +1,7 @@
+workdir/*
+test.txt*
+test2.txt*
+test-flu-*.txt
+test-cov-*.txt
+.nfs*
+debug/
