@@ -1,3 +1,4 @@
+v1.5 (2022.09) - Flu reference data reduced and refined for public access. Chimera annotation list now sorts by annotation name.
 v1.4 (2022.07) - Removed git dependency, re-licensed, cleaned and formatted, better error output.
 v1.3 (2020.11) - Added support for SC2 (thanks to K. Lacek and G. Stott). Upgrade GNU Parallel and SSW.
 v1.2 (2019.01) - Re-factored to make more self-contained

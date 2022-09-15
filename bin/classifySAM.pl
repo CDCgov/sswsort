@@ -183,13 +183,13 @@ while ( my $line = <$SAM> ) {
 }
 close $SAM or croak("Cannot close file $ARGV[0]: $OS_ERROR");
 
-my @annots = ();
 foreach my $key ( keys(%not_found) ) {
     if ( $not_found{$key} ) {
         print STDOUT $key, "\tUNRECOGNIZABLE\t0\t$lengths{$key}\t*\n";
     } else {
-        @annots = sort { $annotsAboveThreshold{$key}{$a} <=> $annotsAboveThreshold{$key}{$b} }
-          keys( %{ $annotsAboveThreshold{$key} } );
+
+        # Re-work required to sort by query position
+        my @annots = sort( keys( %{ $annotsAboveThreshold{$key} } ) );
 
         if ( scalar @annots > 1 && $hitThreshold > 0 ) {
             print STDOUT $key, "\t*", join( '+', @annots ), "\t-1\t", $lengths{$key}, "\t*\n";
