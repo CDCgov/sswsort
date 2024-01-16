@@ -1,0 +1,13 @@
+[package]
+name = "sswsort"
+version = "2.0.0"
+edition = "2021"
+authors = ["Samuel S. Shepard", "Samuel Wiley"]
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+zoe = { git = "https://git.biotech.cdc.gov/vfn4/zoe.git", branch = "alignment" }
+
+[profile.release]
+strip = true
+lto = "thin"
