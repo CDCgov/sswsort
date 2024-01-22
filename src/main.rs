@@ -1,7 +1,10 @@
 #![allow(dead_code, clippy::single_element_loop, unused_variables)]
 
+use ahash::RandomState;
 use clap::Parser;
-use std::path::PathBuf;
+use serde_derive::Deserialize;
+use std::{collections::HashMap, env, fmt, fs, path::PathBuf};
+use toml::from_str;
 use zoe::{data::fasta::FastaNT, prelude::*};
 
 // If we later want to match the shell script, we can use:
@@ -31,7 +34,63 @@ pub struct ClassifierArgs {
     // TO-DO: Implement a grid mode that takes the total processes and the process number
 }
 
+#[derive(Deserialize, Debug)]
+struct Config {
+    name:                String,
+    alternative_names:   Vec<String>,
+    norm_score_minimum:  f32,
+    score_minimum:       u32,
+    length_minimum:      usize,
+    reference_sequences: String,
+    detect_chimera:      bool,
+}
+
+#[derive(Debug)]
+enum Strain {
+    Flu,
+    Covid,
+    Spike,
+    RSV,
+}
+impl fmt::Display for Strain {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Strain::Flu => write!(f, "Flu"),
+            Strain::Covid => write!(f, "Covid"),
+            Strain::Spike => write!(f, "Spike"),
+            Strain::RSV => write!(f, "RSV"),
+        }
+    }
+}
+
 fn main() {
+    let strain_type: Strain = Strain::Flu; // need to implement arg parsing for this?
+
+    let exe_path: PathBuf = env::current_exe().expect("Failed to get executable path");
+    let base_dir: &std::path::Path = exe_path
+        .parent()
+        .expect("Failed to get debug directory")
+        .parent()
+        .expect("Failed to get target directory")
+        .parent()
+        .expect("Failed to get base directory");
+
+    let relative_path: &str = "presets/config.toml";
+
+    let absolute_path: PathBuf = base_dir.join(relative_path);
+    let file_path: String = absolute_path.into_os_string().into_string().unwrap();
+    println!("{}", file_path);
+
+    let file_contents: String =
+        fs::read_to_string(&file_path).expect("Failed to find config.toml in sswsort/presets/ directory");
+
+    let configs_table: HashMap<String, Vec<Config>, RandomState> = from_str(&file_contents).unwrap();
+    let configs: &[Config] = &configs_table["classification_module"];
+
+    /*for config in configs {
+        println!("{:?}", config);
+    }*/
+
     let args = ClassifierArgs::parse();
 
     // SSS will fix this
@@ -40,10 +99,7 @@ fn main() {
         .filter_map(|f| f.ok())
         .map(|seq| seq.filter_to_dna());
 
-    // Wiley:
-    // 1. need module configurations
-    // 2. need to ingest them
-    // 3. need reference data
+    let reference_string: String = "hello".to_owned();
 
     for query in query_reader {
         // Will print to file, for now, print to STDOUT

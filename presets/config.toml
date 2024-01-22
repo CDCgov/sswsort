@@ -1,0 +1,37 @@
+# resource_paths = [".", ".."]
+
+[[classification_module]]
+name = "spike"
+alternative_names = ["sc2-spike", "spike-sc2"]
+norm_score_minimum = 0.7
+score_minimum = 60
+length_minimum = 25
+reference_sequences = "spike-SC2.fasta"
+detect_chimera = true
+
+[[classification_module]]
+name = "flu"
+alternative_names = ["flu-ABCD90P"]
+norm_score_minimum = 1.0
+score_minimum = 100
+length_minimum = 25
+reference_sequences = "flu-ABCD90P.fasta"
+detect_chimera = true
+
+[[classification_module]]
+name = "covid"
+alternative_names = ["cov-beta"]
+norm_score_minimum = 1.0
+score_minimum = 100
+length_minimum = 25
+reference_sequences = "cov-beta.fasta"
+detect_chimera = true
+
+[[classification_module]]
+name = "rsv"
+alternative_names = []
+norm_score_minimum = 1.0
+score_minimum = 100
+length_minimum = 25
+reference_sequences = "rsv.fasta"
+detect_chimera = true

@@ -7,6 +7,10 @@ authors = ["Samuel S. Shepard", "Samuel Wiley"]
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 zoe = { git = "https://git.biotech.cdc.gov/vfn4/zoe.git", branch = "alignment" }
+toml = "0.5"
+serde = "1.0"
+serde_derive = "1.0"
+ahash = "0.8.7"
 
 [profile.release]
 strip = true
