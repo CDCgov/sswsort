@@ -19,8 +19,8 @@ reference_sequences = "flu-ABCD90P.fasta"
 detect_chimera = true
 
 [[classification_module]]
-name = "covid"
-alternative_names = ["cov-beta"]
+name = "cov"
+alternative_names = ["cov-beta", "covid", "sc2"]
 norm_score_minimum = 1.0
 score_minimum = 100
 length_minimum = 25

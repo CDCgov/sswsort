@@ -94,18 +94,19 @@ command -v "git" > /dev/null 2>&1 \
 # Find reference set
 MEDIANS=""
 THRESHOLDS=""
+RES_PATH="$bpath/ssw_res"
 PRESET=$(basename "$REF")
-if [ -s "$bpath/presets/${REF}.fasta" ]; then
+if [ -s "$RES_PATH/${REF}.fasta" ]; then
     TMP=$(echo "$REF" | cut -f1 -d'-')
 
     # Source is valid
     # shellcheck disable=SC1090
-    [ -s "$bpath/presets/${TMP}.config.txt" ] && source "$bpath/presets/${TMP}.config.txt"
+    [ -s "$RES_PATH/${TMP}.config.txt" ] && source "$RES_PATH/${TMP}.config.txt"
     # shellcheck disable=SC1090
-    [ -s "$bpath/presets/${REF}.config.txt" ] && source "$bpath/presets/${REF}.config.txt"
-    [ -s "$bpath/presets/${TMP}.medians.txt" ] && MEDIANS="-L $bpath/presets/${TMP}.medians.txt"
-    [ -s "$bpath/presets/${REF}.medians.txt" ] && MEDIANS="-L $bpath/presets/${REF}.medians.txt"
-    REF=$bpath/presets/${REF}.fasta
+    [ -s "$RES_PATH/${REF}.config.txt" ] && source "$RES_PATH/${REF}.config.txt"
+    [ -s "$RES_PATH/${TMP}.medians.txt" ] && MEDIANS="-L $RES_PATH/${TMP}.medians.txt"
+    [ -s "$RES_PATH/${REF}.medians.txt" ] && MEDIANS="-L $RES_PATH/${REF}.medians.txt"
+    REF=$RES_PATH/${REF}.fasta
 else
     [ -s "$REF" ] || die "Cannot find reference '$REF'."
 fi
