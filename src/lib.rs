@@ -3,48 +3,138 @@
 use serde_derive::Deserialize;
 use std::path::PathBuf;
 use std::{
+    collections::HashSet,
+    fmt,
     fs::read_to_string,
     io::{Error, ErrorKind},
 };
 use toml::from_str;
 use zoe::{alignment::sw::sw_score, data::fasta::FastaNT, prelude::*};
 
-const UNRECOGNIZABLE: &str = "UNRECOGNIZABLE";
+#[derive(Hash, Eq, PartialEq, Clone, Copy)]
+pub enum Strand {
+    Plus,
+    Minus,
+    Unknown,
+}
 
-// Can we return invalid states differently?
-pub fn classify_query(query_pos: &FastaNT, params: &SSWSortArgs) -> (String, i32, u8) {
-    let query_neg = query_pos.sequence.reverse_complement();
+impl fmt::Display for Strand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Strand::Plus => write!(f, "+"),
+            Strand::Minus => write!(f, "-"),
+            Strand::Unknown => write!(f, "*"),
+        }
+    }
+}
 
-    let (best_score, best_taxon, best_strand) = params
+#[non_exhaustive]
+pub enum ClassificationResult {
+    Unrecognizable,
+    Classification { taxon: String, score: i32, strand: Strand },
+    Chimeric { taxa: Vec<String>, strand: Strand },
+    UnusuallyLong { taxon: String, score: i32, strand: Strand },
+}
+
+impl fmt::Display for ClassificationResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ClassificationResult::Unrecognizable => write!(f, "was UNRECOGNIZABLE!"),
+            ClassificationResult::Classification { taxon, score, strand } => {
+                write!(f, "{}\t{}\t{}", taxon, score, strand)
+            }
+            ClassificationResult::Chimeric { taxa, strand } => {
+                write!(f, "Chimeric: {}\t{}", taxa.join("+"), strand)
+            }
+            ClassificationResult::UnusuallyLong { taxon, score, strand } => {
+                write!(f, "Unusually Long: {}\t{}\t{}", taxon, score, strand)
+            }
+        }
+    }
+}
+
+#[inline]
+fn calculate_alignment_score<'a>(
+    reference: &'a FastaNTAnnot, query_pos: &'a FastaNT, query_neg: &'a Nucleotides,
+) -> (i32, &'a str, Strand) {
+    let score_pos: i32 = get_alignment_score(reference.sequence.as_bytes(), query_pos.sequence.as_bytes());
+    let score_neg: i32 = get_alignment_score(reference.sequence.as_bytes(), query_neg.as_bytes());
+    if score_neg > score_pos {
+        (score_neg, reference.taxon.as_str(), Strand::Minus)
+    } else {
+        (score_pos, reference.taxon.as_str(), Strand::Plus)
+    }
+}
+
+pub fn classify(query_pos: &FastaNT, params: &SSWSortArgs) -> ClassificationResult {
+    let hit_threshold = 800;
+    if query_pos.sequence.len() < params.length_minimum {
+        return ClassificationResult::Unrecognizable;
+    }
+
+    let query_neg: Nucleotides = query_pos.sequence.reverse_complement();
+    let taxa = params
         .references
         .iter()
-        .map(|reference| {
-            let score_pos = get_alignment_score(reference.sequence.as_bytes(), query_pos.sequence.as_bytes());
-            let score_neg = get_alignment_score(reference.sequence.as_bytes(), query_pos.sequence.as_bytes());
-            if score_neg > score_pos {
-                (score_neg, reference.taxon.as_str(), b'-')
-            } else {
-                (score_pos, reference.taxon.as_str(), b'+')
-            }
-        })
-        .max_by_key(|&(score, _, _)| score)
-        .unwrap_or((0, UNRECOGNIZABLE, b'?'));
+        .map(|reference| calculate_alignment_score(reference, query_pos, &query_neg))
+        .collect::<Vec<_>>();
 
-    let best_taxon = best_taxon.to_string();
-    if query_pos.sequence.len() < params.length_minimum || best_score < params.score_minimum {
-        (best_taxon, best_score, best_strand)
+    if params.detect_chimera {
+        classify_chimeric(taxa)
     } else {
-        let norm_score: f32 = if !query_pos.sequence.is_empty() {
-            best_score as f32 / query_pos.sequence.len() as f32
-        } else {
-            0.0
-        };
+        classify_non_chimeric(taxa, params, query_pos)
+    }
+}
 
-        if norm_score < params.norm_score_minimum {
-            (UNRECOGNIZABLE.to_string(), best_score, best_strand)
-        } else {
-            (best_taxon, best_score, best_strand)
+#[inline]
+fn classify_chimeric(taxa: Vec<(i32, &str, Strand)>) -> ClassificationResult {
+    let mut seen_strings = HashSet::new();
+    let mut result = Vec::new();
+
+    for (num, string, strand) in taxa {
+        if seen_strings.insert(string) && num >= 800 {
+            result.push((num, string, strand));
         }
+    }
+
+    result.sort_by_key(|&(score, _, _)| score);
+
+    match result.len() {
+        0 => ClassificationResult::Unrecognizable,
+        1 => ClassificationResult::Classification {
+            score:  result[0].0,
+            taxon:  result[0].1.to_owned(),
+            strand: result[0].2,
+        },
+        _ => {
+            let taxa: Vec<String> = result.iter().map(|(_, taxon, _)| taxon.to_string()).collect();
+            ClassificationResult::Chimeric {
+                taxa,
+                strand: Strand::Unknown,
+            }
+        }
+    }
+}
+
+#[inline]
+fn classify_non_chimeric(taxa: Vec<(i32, &str, Strand)>, params: &SSWSortArgs, query_pos: &FastaNT) -> ClassificationResult {
+    if let Some((best_score, best_taxon, best_strand)) = taxa.iter().max_by_key(|&&(score, _, _)| score) {
+        let taxon = best_taxon.to_string();
+        let strand = *best_strand;
+
+        let norm_score: f32 = *best_score as f32 / query_pos.sequence.len() as f32;
+
+        if norm_score < params.norm_score_minimum && *best_score < params.score_minimum {
+            ClassificationResult::Unrecognizable
+        } else {
+            ClassificationResult::Classification {
+                taxon,
+                score: *best_score,
+                strand,
+            }
+        }
+    } else {
+        ClassificationResult::Unrecognizable
     }
 }
 

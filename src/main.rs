@@ -2,6 +2,8 @@
 
 //use ahash::RandomState;
 use clap::Parser;
+use rayon::iter::ParallelBridge;
+use rayon::prelude::ParallelIterator;
 use sswsort::*;
 use std::path::PathBuf;
 use zoe::prelude::*;
@@ -44,17 +46,21 @@ fn main() {
 
     let params = get_sswsort_module_args(&args.module).unwrap_or_die("Failed to load module data!");
 
-    for query in query_reader {
-        // Will print to file, for now, print to STDOUT
-        let (taxon, score, strand) = classify_query(&query, &params);
-        // TO-DO: either create a struct for output and write a Display OR just print it out
-        // TO-DO: can we use arrow2 or the like to write to parquet OPTIONALLY
-        // COuld interact poorly with standard out, so make that exclusive as well
+    // TO-DO: either create a struct for output and write a Display OR just print it out
+    // TO-DO: can we use arrow2 or the like to write to parquet OPTIONALLY
+    // COuld interact poorly with standard out, so make that exclusive as well
+    // Will print to file, for now, print to STDOUT
+
+    let results: Vec<(ClassificationResult, String, usize)> = query_reader
+        .into_iter()
+        .par_bridge()
+        .map(|query| (classify(&query, &params), query.name, query.sequence.len()))
+        .collect();
+
+    for (classification, query_name, seq_length) in results.into_iter() {
         println!(
-            "{PROGRAM_VERSION}\t{module_name}\t{id}\t{taxon}\t{score}\t{seq_length}\t{strand}",
+            "{PROGRAM_VERSION}\t{module_name}\t{query_name}\t{classification}",
             module_name = args.module,
-            id = query.name,
-            seq_length = query.sequence.len()
         );
     }
 }

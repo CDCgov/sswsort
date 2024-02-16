@@ -7,3 +7,7 @@ test-cov-*.txt
 debug/
 target/
 Cargo.lock
+.vscode/perl-lang
+/*.txt
+/*.fasta
+/*.fa
