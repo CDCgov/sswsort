@@ -5,3 +5,5 @@ test-flu-*.txt
 test-cov-*.txt
 .nfs*
 debug/
+target/
+Cargo.lock
