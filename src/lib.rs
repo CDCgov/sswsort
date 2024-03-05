@@ -1,15 +1,21 @@
-#![allow(unused_variables)]
-#![feature(iterator_try_collect)]
+#![feature(let_chains)]
+use foldhash::{HashMap, HashMapExt};
 use serde_derive::Deserialize;
-use std::path::PathBuf;
-use std::{
-    collections::HashSet,
-    fmt,
-    fs::read_to_string,
-    io::{Error, ErrorKind},
-};
+use std::{cmp::max, collections::BTreeSet, fmt, fs::read_to_string, io::Error, io::ErrorKind, path::PathBuf};
 use toml::from_str;
-use zoe::{alignment::sw::sw_score, data::fasta::FastaNT, prelude::*};
+use zoe::{
+    alignment::{sw::sw_simd_score, QueryProfileStripedDNA},
+    data::{fasta::FastaNT, fasta::FastaNTAnnot, BiasedWeightMatrix, SymmetricWeightMatrix},
+    prelude::*,
+};
+
+// Weights are fixed presently
+const GAP_OPEN: i8 = -10;
+const GAP_EXTEND: i8 = -1;
+const MISMATCH: i8 = -5;
+const MATCH: i8 = 2;
+const MATRIX: BiasedWeightMatrix<5> =
+    SymmetricWeightMatrix::<5>::new_dna_matrix(MATCH, MISMATCH, Some(b'N')).into_biased_matrix();
 
 #[derive(Hash, Eq, PartialEq, Clone, Copy)]
 pub enum Strand {
@@ -31,23 +37,42 @@ impl fmt::Display for Strand {
 #[non_exhaustive]
 pub enum ClassificationResult {
     Unrecognizable,
-    Classification { taxon: String, score: i32, strand: Strand },
-    Chimeric { taxa: Vec<String>, strand: Strand },
-    UnusuallyLong { taxon: String, score: i32, strand: Strand },
+    Classification {
+        taxon:      String,
+        best_score: usize,
+        strand:     Strand,
+    },
+    Chimeric {
+        taxa:   Vec<String>,
+        strand: Strand,
+    },
+    UnusuallyLong {
+        taxon:      String,
+        best_score: usize,
+        strand:     Strand,
+    },
 }
 
 impl fmt::Display for ClassificationResult {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ClassificationResult::Unrecognizable => write!(f, "was UNRECOGNIZABLE!"),
-            ClassificationResult::Classification { taxon, score, strand } => {
-                write!(f, "{}\t{}\t{}", taxon, score, strand)
+            ClassificationResult::Classification {
+                taxon,
+                best_score,
+                strand,
+            } => {
+                write!(f, "{taxon}\t{best_score}\t{strand}")
             }
             ClassificationResult::Chimeric { taxa, strand } => {
                 write!(f, "Chimeric: {}\t{}", taxa.join("+"), strand)
             }
-            ClassificationResult::UnusuallyLong { taxon, score, strand } => {
-                write!(f, "Unusually Long: {}\t{}\t{}", taxon, score, strand)
+            ClassificationResult::UnusuallyLong {
+                taxon,
+                best_score,
+                strand,
+            } => {
+                write!(f, "Unusually Long: {taxon}\t{best_score}\t{strand}")
             }
         }
     }
@@ -56,9 +81,24 @@ impl fmt::Display for ClassificationResult {
 #[inline]
 fn calculate_alignment_score<'a>(
     reference: &'a FastaNTAnnot, query_pos: &'a FastaNT, query_neg: &'a Nucleotides,
-) -> (i32, &'a str, Strand) {
-    let score_pos: i32 = get_alignment_score(reference.sequence.as_bytes(), query_pos.sequence.as_bytes());
-    let score_neg: i32 = get_alignment_score(reference.sequence.as_bytes(), query_neg.as_bytes());
+) -> (usize, &'a str, Strand) {
+    let ref_profile = QueryProfileStripedDNA::<u16, 16>::new(reference.sequence.as_bytes(), &MATRIX);
+
+    let score_pos = sw_simd_score::<u16, 16, _>(
+        query_pos.sequence.as_bytes(),
+        &ref_profile,
+        GAP_OPEN.unsigned_abs() as u16,
+        GAP_EXTEND.unsigned_abs() as u16,
+    )
+    .unwrap() as usize;
+
+    let score_neg = sw_simd_score::<u16, 16, _>(
+        query_neg.as_bytes(),
+        &ref_profile,
+        GAP_OPEN.unsigned_abs() as u16,
+        GAP_EXTEND.unsigned_abs() as u16,
+    )
+    .unwrap() as usize;
     if score_neg > score_pos {
         (score_neg, reference.taxon.as_str(), Strand::Minus)
     } else {
@@ -67,7 +107,6 @@ fn calculate_alignment_score<'a>(
 }
 
 pub fn classify(query_pos: &FastaNT, params: &SSWSortArgs) -> ClassificationResult {
-    let hit_threshold = 800;
     if query_pos.sequence.len() < params.length_minimum {
         return ClassificationResult::Unrecognizable;
     }
@@ -76,60 +115,51 @@ pub fn classify(query_pos: &FastaNT, params: &SSWSortArgs) -> ClassificationResu
     let taxa = params
         .references
         .iter()
-        .map(|reference| calculate_alignment_score(reference, query_pos, &query_neg))
-        .collect::<Vec<_>>();
+        .map(|reference| calculate_alignment_score(reference, query_pos, &query_neg));
 
-    if params.detect_chimera {
-        classify_chimeric(taxa)
-    } else {
-        classify_non_chimeric(taxa, params, query_pos)
-    }
-}
+    // Does not allocate unless data is pushed
+    let mut valid_chimera_taxa = BTreeSet::new();
+    let hit_threshold = 800;
 
-#[inline]
-fn classify_chimeric(taxa: Vec<(i32, &str, Strand)>) -> ClassificationResult {
-    let mut seen_strings = HashSet::new();
-    let mut result = Vec::new();
+    let best = if params.detect_chimera {
+        let opt = taxa
+            .inspect(|&(score, taxon, _)| {
+                if score >= hit_threshold {
+                    valid_chimera_taxa.insert(taxon);
+                }
+            })
+            .max_by_key(|&(score, _, _)| score);
 
-    for (num, string, strand) in taxa {
-        if seen_strings.insert(string) && num >= 800 {
-            result.push((num, string, strand));
-        }
-    }
-
-    result.sort_by_key(|&(score, _, _)| score);
-
-    match result.len() {
-        0 => ClassificationResult::Unrecognizable,
-        1 => ClassificationResult::Classification {
-            score:  result[0].0,
-            taxon:  result[0].1.to_owned(),
-            strand: result[0].2,
-        },
-        _ => {
-            let taxa: Vec<String> = result.iter().map(|(_, taxon, _)| taxon.to_string()).collect();
-            ClassificationResult::Chimeric {
+        if valid_chimera_taxa.len() > 1 {
+            let taxa = valid_chimera_taxa.into_iter().rev().map(str::to_string).collect();
+            return ClassificationResult::Chimeric {
                 taxa,
                 strand: Strand::Unknown,
-            }
+            };
         }
-    }
-}
+        opt
+    } else {
+        taxa.max_by_key(|&(score, _, _)| score)
+    };
 
-#[inline]
-fn classify_non_chimeric(taxa: Vec<(i32, &str, Strand)>, params: &SSWSortArgs, query_pos: &FastaNT) -> ClassificationResult {
-    if let Some((best_score, best_taxon, best_strand)) = taxa.iter().max_by_key(|&&(score, _, _)| score) {
-        let taxon = best_taxon.to_string();
-        let strand = *best_strand;
+    if let Some((best_score, taxon, strand)) = best
+        && (best_score >= params.score_minimum
+            || best_score as f32 / query_pos.sequence.len() as f32 >= params.norm_score_minimum)
+    {
+        let taxon: String = taxon.to_string();
 
-        let norm_score: f32 = *best_score as f32 / query_pos.sequence.len() as f32;
-
-        if norm_score < params.norm_score_minimum && *best_score < params.score_minimum {
-            ClassificationResult::Unrecognizable
+        if let Some(&max_length) = params.length_by_annot.get(&taxon)
+            && query_pos.sequence.len() >= max_length
+        {
+            ClassificationResult::UnusuallyLong {
+                taxon,
+                best_score,
+                strand,
+            }
         } else {
             ClassificationResult::Classification {
                 taxon,
-                score: *best_score,
+                best_score,
                 strand,
             }
         }
@@ -138,48 +168,14 @@ fn classify_non_chimeric(taxa: Vec<(i32, &str, Strand)>, params: &SSWSortArgs, q
     }
 }
 
-// SSS will fix this
-pub fn get_alignment_score(reference: &[u8], query: &[u8]) -> i32 {
-    let (_, _, score) = sw_score(reference, query, GAP_OPEN, GAP_EXTEND, &SM);
-    score
-}
-
-// Weights are fixed presently
-const GAP_OPEN: i32 = -10;
-const GAP_EXTEND: i32 = -1;
-const MISMATCH: i32 = -5;
-const MATCH: i32 = 2;
-
-// Push up to Zoe and make 32 x 32
-const SM: [[i32; 256]; 256] = {
-    let mut bytes = [[0i32; 256]; 256];
-    let bases = b"AGCT";
-
-    let mut i = 0;
-    while i < bases.len() {
-        let mut j = 0;
-        while j < bases.len() {
-            bytes[bases[i] as usize][bases[j] as usize] = if i == j { MATCH } else { MISMATCH };
-            j += 1;
-        }
-        i += 1;
-    }
-    bytes
-};
-
-pub struct FastaNTAnnot {
-    pub name:     String,
-    pub sequence: Nucleotides,
-    pub taxon:    String,
-}
-
 pub struct SSWSortArgs {
     pub name:               String,
     pub references:         Vec<FastaNTAnnot>,
     pub norm_score_minimum: f32,
-    pub score_minimum:      i32,
+    pub score_minimum:      usize,
     pub length_minimum:     usize,
     pub detect_chimera:     bool,
+    pub length_by_annot:    HashMap<String, usize>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -193,7 +189,7 @@ pub struct ModuleParameters {
     pub name:                String,
     pub alternative_names:   Vec<String>,
     pub norm_score_minimum:  f32,
-    pub score_minimum:       i32,
+    pub score_minimum:       usize,
     pub length_minimum:      usize,
     pub reference_sequences: PathBuf,
     pub detect_chimera:      bool,
@@ -214,21 +210,24 @@ impl TryFrom<ModuleParameters> for SSWSortArgs {
 
         let references = FastaReader::from_filename(reference_sequences)?
             .filter_map(|f| f.ok())
-            .map(|fa| {
-                if let Some((id, taxon)) = fa.get_id_taxon() {
-                    Ok(FastaNTAnnot {
-                        name:     id.to_string(),
-                        sequence: fa.sequence.filter_to_dna(),
-                        taxon:    taxon.to_string(),
-                    })
-                } else {
-                    Err(Error::new(
-                        ErrorKind::InvalidData,
-                        format!("No Reference Taxon: {id}", id = fa.name),
-                    ))
-                }
-            })
-            .try_collect()?;
+            .map(FastaNTAnnot::try_from)
+            .collect::<Result<Vec<FastaNTAnnot>, Error>>()?;
+
+        let length_factor = 2;
+        let mut length_by_annot = HashMap::new();
+        for FastaNTAnnot {
+            name: _,
+            sequence,
+            taxon,
+        } in &references
+        {
+            // The cloning is hard to avoid but only once per reference, maybe for later
+            let this_len = sequence.len() * length_factor;
+            length_by_annot
+                .entry(taxon.clone())
+                .and_modify(|len| *len = max(*len, this_len))
+                .or_insert(this_len);
+        }
 
         Ok(SSWSortArgs {
             name,
@@ -237,6 +236,7 @@ impl TryFrom<ModuleParameters> for SSWSortArgs {
             score_minimum,
             length_minimum,
             detect_chimera,
+            length_by_annot,
         })
     }
 }
@@ -257,7 +257,7 @@ pub fn get_sswsort_module_args(preset_module: &str) -> Result<SSWSortArgs, Error
     }
 
     let raw_toml = read_to_string(toml_path)?;
-    let configs: TomlConfig = from_str(&raw_toml)?;
+    let configs: TomlConfig = from_str(&raw_toml).map_err(|e| std::io::Error::new(ErrorKind::InvalidData, e))?;
 
     let selected_config = configs
         .classification_module

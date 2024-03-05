@@ -29,16 +29,15 @@ pub struct ClassifierArgs {
     output_file: PathBuf,
 
     // Optional arguments
-    /// Number of threads for shared-multiprocessing execution.
-    #[arg(short = 'T', long, default_value_t = 1)]
-    threads: u8,
+    /// Run in simultaneous multi-threaded mode.
+    #[arg(short = 'T', long)]
+    threads: bool,
     // TO-DO: Implement a grid mode that takes the total processes and the process number
 }
 
 fn main() {
     let args = ClassifierArgs::parse();
 
-    // SSS will fix this
     let query_reader = FastaReader::from_filename(args.fasta_file)
         .unwrap_or_die("Cannot open FASTA file!")
         .filter_map(|f| f.ok())
@@ -46,16 +45,16 @@ fn main() {
 
     let params = get_sswsort_module_args(&args.module).unwrap_or_die("Failed to load module data!");
 
-    // TO-DO: either create a struct for output and write a Display OR just print it out
-    // TO-DO: can we use arrow2 or the like to write to parquet OPTIONALLY
-    // COuld interact poorly with standard out, so make that exclusive as well
-    // Will print to file, for now, print to STDOUT
-
-    let results: Vec<(ClassificationResult, String, usize)> = query_reader
-        .into_iter()
-        .par_bridge()
-        .map(|query| (classify(&query, &params), query.name, query.sequence.len()))
-        .collect();
+    let results: Vec<(ClassificationResult, String, usize)> = if args.threads {
+        query_reader
+            .par_bridge()
+            .map(|query| (classify(&query, &params), query.name, query.sequence.len()))
+            .collect()
+    } else {
+        query_reader
+            .map(|query| (classify(&query, &params), query.name, query.sequence.len()))
+            .collect()
+    };
 
     for (classification, query_name, seq_length) in results.into_iter() {
         println!(
