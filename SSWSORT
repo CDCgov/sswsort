@@ -34,9 +34,9 @@
 #  material.
 
 PROG=$(basename "$0" .sh)
-VERSION="v1.4"
-AUTHOR="S.S. Shepard"
-DATE="2022.07"
+VERSION="v1.6"
+AUTHOR="S. S. Shepard"
+DATE="2024.04"
 
 if [ "$#" -ne "3" ] && [ "$#" -ne "2" ]; then
     echo -e "\n$PROG $VERSION by $AUTHOR ($DATE)"
@@ -69,20 +69,6 @@ SSW_OPTS="-x $SSW_X -m $SSW_M -o $SSW_O -e $SSW_E"
 REF=$1
 QUERY=$2
 [ "$#" -eq "3" ] && OUTPUT_FILE=$3
-
-# FNC - ERROR TEST #
-# Idea courtesy: steve-parker.org/sh/exitcodes.shtml
-function err_test() {
-    if [ "$1" -ne "0" ]; then
-        echo ""
-        if [ $# -eq "1" ]; then
-            echo "$PROG ERROR: operations have been ABORTED!"
-        else
-            echo "$PROG ERROR ($2): operations have been ABORTED!"
-        fi
-        exit 1
-    fi
-}
 
 # Idea courtesy: stackoverflow.com/questions/592620/check-if-a-program-exists-from-a-bash-script
 function check_prgm() {
