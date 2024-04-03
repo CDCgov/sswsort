@@ -1,0 +1,30 @@
+# SSWSORT
+
+## v1.6 (2024.04)
+
+- **Feature:** adds a RSV module. Many thanks to C. Paden and M. Mandal!
+
+## v1.5 (2022.09)
+
+- **Fix:** Flu reference data reduced and refined for public access.
+- **Change:** chimera annotation list now sorts by annotation name.
+
+## v1.4 (2022.07)
+
+- Removed git dependency, re-licensed, cleaned and formatted, better error output.
+
+## v1.3 (2020.11)
+
+- Added support for SC2 (thanks to K. Lacek and G. Stott). Upgrade GNU Parallel and SSW.
+
+## v1.2 (2019.01)
+
+- Re-factored to make more self-contained
+
+## v1.1 (2018.08)
+
+- Cleaned up output and added fields such as program version.
+
+## v1.0 (2018.08)
+
+- Initial release after alternatives testing. Smith-Waterman gave the most sensitive results for this purose.

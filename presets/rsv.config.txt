@@ -1,0 +1,3 @@
+# Require a normalized score of 1 and an un-normalized score of 100
+# Turn off concatenation detection.
+THRESHOLDS="-N 1.0 -S 100 -G 25 -T 0"

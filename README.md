@@ -1,18 +1,24 @@
 # SSWSORT - simple virus gene segment / genome classification via Smith-Waterman
-Sorts (classifies) sequences (usually influenza or SARS-CoV-2) using presets or DBs and a query sequence (FASTA). The SORT is a best match criterion, and ignores same strand repeats. SSWSORT is vulnerable to anomalous data.
+
+Sorts (classifies) sequences (influenza, SARS-CoV-2, RSV) using presets or DBs and a query sequence (FASTA). The SORT is a best match criterion, and ignores same strand repeats. SSWSORT is vulnerable to anomalous data.
+
+## Usage
 
 Usage:
-```
+
+```bash
 SSWSORT <ref> <query> <output_file>
 ```
 
 Self-tests:
-```
+
+```bash
 ./SSWSORT flu-ABCD90P presets/flu-ABCD90P.fasta test.txt
 ./SSWSORT cov-beta presets/cov-beta.fasta test2.txt
+./SSWSORT rsv presets/rsv.fasta test3.txt
 ```
 
-# Component Citations
+## Component Citations
 
 This package uses a modified version of SSW (`bin/component_licenses_and_source`):
 
