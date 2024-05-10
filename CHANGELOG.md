@@ -1,5 +1,9 @@
 # SSWSORT
 
+## v1.6.1 (2024.05)
+
+- **Feature:** adds custom working directories with IFX_WORK_DIR.
+
 ## v1.6 (2024.04)
 
 - **Feature:** adds a RSV module. Many thanks to C. Paden and M. Mandal!

@@ -124,7 +124,8 @@ PARALLEL="$bpath/bin/parallel --will-cite"
 SSW=$bpath/bin/ssw_$OS
 
 # Create working path
-workdir=$(mktemp -d "$bpath"/workdir/XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX)
+workdir_prefix=${IFX_WORK_DIR:-"$bpath/workdir"}
+workdir=$(mktemp -d "$workdir_prefix"/XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX)
 [ -d "$workdir" ] || die "Could not create working directory under $bpath"
 
 # Function
