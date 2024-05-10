@@ -34,9 +34,9 @@
 #  material.
 
 PROG=$(basename "$0" .sh)
-VERSION="v1.6"
+VERSION="v1.6.1"
 AUTHOR="S. S. Shepard"
-DATE="2024.04"
+DATE="2024.05"
 
 if [ "$#" -ne "3" ] && [ "$#" -ne "2" ]; then
     echo -e "\n$PROG $VERSION by $AUTHOR ($DATE)"
