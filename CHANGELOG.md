@@ -2,7 +2,7 @@
 
 ## v1.6.1 (2024.05)
 
-- **Feature:** adds configurable working directories with `IFX_WORK_DIR``.
+- **Feature:** adds configurable working directories with `IFX_WORK_DIR`.
 
 ## v1.6 (2024.04)
 
