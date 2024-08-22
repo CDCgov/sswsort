@@ -1,5 +1,9 @@
 # SSWSORT
 
+## v1.6.2 (2024.08)
+
+- **Change:** RSV compound types renamed to match the conventions of other tooling, e.g., RSVA becomes RSV_AD.
+
 ## v1.6.1 (2024.05)
 
 - **Feature:** adds configurable working directories with `IFX_WORK_DIR`.
