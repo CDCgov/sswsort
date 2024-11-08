@@ -1,17 +1,21 @@
 [package]
 name = "sswsort"
 version = "2.0.0"
-edition = "2021"
+edition = "2024"
 authors = ["Samuel S. Shepard", "Samuel Wiley"]
+rust-version = "1.88"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 rayon = "*"
-zoe = { git = "https://git.biotech.cdc.gov/vfn4/zoe.git", branch = "finish-striped-sw", default-features = false }
+zoe = { git = "https://github.com/CDCgov/zoe.git", branch = "main", default-features = false, features = [
+    "multiversion",
+] }
 toml = "*"
 serde = "*"
 serde_derive = "*"
-foldhash = "0.1"
+foldhash = "*"
+num_cpus = "*"
 
 [profile.release]
 strip = true

@@ -1,9 +1,7 @@
 #![allow(dead_code, clippy::single_element_loop, unused_variables)]
 
-//use ahash::RandomState;
 use clap::Parser;
-use rayon::iter::ParallelBridge;
-use rayon::prelude::ParallelIterator;
+use rayon::{ThreadPoolBuilder, iter::ParallelBridge, prelude::ParallelIterator};
 use sswsort::*;
 use std::path::PathBuf;
 use zoe::prelude::*;
@@ -46,6 +44,9 @@ fn main() {
     let params = get_sswsort_module_args(&args.module).unwrap_or_die("Failed to load module data!");
 
     let results: Vec<(ClassificationResult, String, usize)> = if args.threads {
+        let physical_cpus = num_cpus::get_physical();
+        ThreadPoolBuilder::new().num_threads(physical_cpus).build_global().unwrap();
+
         query_reader
             .par_bridge()
             .map(|query| (classify(&query, &params), query.name, query.sequence.len()))

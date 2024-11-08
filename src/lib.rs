@@ -1,11 +1,10 @@
-#![feature(let_chains)]
 use foldhash::{HashMap, HashMapExt};
 use serde_derive::Deserialize;
 use std::{cmp::max, collections::BTreeSet, fmt, fs::read_to_string, io::Error, io::ErrorKind, path::PathBuf};
 use toml::from_str;
 use zoe::{
-    alignment::{sw::sw_simd_score, QueryProfileStripedDNA},
-    data::{fasta::FastaNT, fasta::FastaNTAnnot, BiasedWeightMatrix, SymmetricWeightMatrix},
+    alignment::LocalProfiles,
+    data::{WeightMatrix, fasta::FastaNT, fasta::FastaNTAnnot},
     prelude::*,
 };
 
@@ -14,8 +13,7 @@ const GAP_OPEN: i8 = -10;
 const GAP_EXTEND: i8 = -1;
 const MISMATCH: i8 = -5;
 const MATCH: i8 = 2;
-const MATRIX: BiasedWeightMatrix<5> =
-    SymmetricWeightMatrix::<5>::new_dna_matrix(MATCH, MISMATCH, Some(b'N')).into_biased_matrix();
+const MATRIX: WeightMatrix<i8, 5> = WeightMatrix::new_dna_matrix(MATCH, MISMATCH, Some(b'N'));
 
 #[derive(Hash, Eq, PartialEq, Clone, Copy)]
 pub enum Strand {
@@ -39,7 +37,7 @@ pub enum ClassificationResult {
     Unrecognizable,
     Classification {
         taxon:      String,
-        best_score: usize,
+        best_score: u64,
         strand:     Strand,
     },
     Chimeric {
@@ -48,7 +46,7 @@ pub enum ClassificationResult {
     },
     UnusuallyLong {
         taxon:      String,
-        best_score: usize,
+        best_score: u64,
         strand:     Strand,
     },
 }
@@ -80,42 +78,34 @@ impl fmt::Display for ClassificationResult {
 
 #[inline]
 fn calculate_alignment_score<'a>(
-    reference: &'a FastaNTAnnot, query_pos: &'a FastaNT, query_neg: &'a Nucleotides,
-) -> (usize, &'a str, Strand) {
-    let ref_profile = QueryProfileStripedDNA::<u16, 16>::new(reference.sequence.as_bytes(), &MATRIX);
+    reference: &'a (FastaNTAnnot, Nucleotides), query_profile: &LocalProfiles<64, 32, 16, 8, 5>,
+) -> (u64, &'a str, Strand) {
+    let (reference, reference_seq_revcomp) = reference;
 
-    let score_pos = sw_simd_score::<u16, 16, _>(
-        query_pos.sequence.as_bytes(),
-        &ref_profile,
-        GAP_OPEN.unsigned_abs() as u16,
-        GAP_EXTEND.unsigned_abs() as u16,
-    )
-    .unwrap() as usize;
+    let score_pos = query_profile.smith_waterman_score_from_i8(&reference.sequence);
+    let score_neg = query_profile.smith_waterman_score_from_i8(reference_seq_revcomp);
 
-    let score_neg = sw_simd_score::<u16, 16, _>(
-        query_neg.as_bytes(),
-        &ref_profile,
-        GAP_OPEN.unsigned_abs() as u16,
-        GAP_EXTEND.unsigned_abs() as u16,
-    )
-    .unwrap() as usize;
-    if score_neg > score_pos {
-        (score_neg, reference.taxon.as_str(), Strand::Minus)
-    } else {
-        (score_pos, reference.taxon.as_str(), Strand::Plus)
+    match (score_pos, score_neg) {
+        (Some(pos), Some(neg)) if neg > pos => (neg, reference.taxon.as_str(), Strand::Minus),
+        (Some(pos), Some(_)) => (pos, reference.taxon.as_str(), Strand::Plus),
+        _ => panic!("Alignment failed!"),
     }
 }
 
-pub fn classify(query_pos: &FastaNT, params: &SSWSortArgs) -> ClassificationResult {
-    if query_pos.sequence.len() < params.length_minimum {
+pub fn classify(query: &FastaNT, params: &SSWSortArgs) -> ClassificationResult {
+    if query.sequence.len() < params.length_minimum {
         return ClassificationResult::Unrecognizable;
     }
 
-    let query_neg: Nucleotides = query_pos.sequence.reverse_complement();
+    let Ok(query_profile) = LocalProfiles::new_with_w512(&query.sequence, &MATRIX, GAP_OPEN, GAP_EXTEND) else {
+        eprintln!("WARNING: '{id}' was empty or had bad scoring weights.", id = query.name);
+        return ClassificationResult::Unrecognizable;
+    };
+
     let taxa = params
         .references
         .iter()
-        .map(|reference| calculate_alignment_score(reference, query_pos, &query_neg));
+        .map(|reference| calculate_alignment_score(reference, &query_profile));
 
     // Does not allocate unless data is pushed
     let mut valid_chimera_taxa = BTreeSet::new();
@@ -144,12 +134,12 @@ pub fn classify(query_pos: &FastaNT, params: &SSWSortArgs) -> ClassificationResu
 
     if let Some((best_score, taxon, strand)) = best
         && (best_score >= params.score_minimum
-            || best_score as f32 / query_pos.sequence.len() as f32 >= params.norm_score_minimum)
+            || best_score as f32 / query.sequence.len() as f32 >= params.norm_score_minimum)
     {
         let taxon: String = taxon.to_string();
 
         if let Some(&max_length) = params.length_by_annot.get(&taxon)
-            && query_pos.sequence.len() >= max_length
+            && query.sequence.len() >= max_length
         {
             ClassificationResult::UnusuallyLong {
                 taxon,
@@ -170,9 +160,9 @@ pub fn classify(query_pos: &FastaNT, params: &SSWSortArgs) -> ClassificationResu
 
 pub struct SSWSortArgs {
     pub name:               String,
-    pub references:         Vec<FastaNTAnnot>,
+    pub references:         Vec<(FastaNTAnnot, Nucleotides)>,
     pub norm_score_minimum: f32,
-    pub score_minimum:      usize,
+    pub score_minimum:      u64,
     pub length_minimum:     usize,
     pub detect_chimera:     bool,
     pub length_by_annot:    HashMap<String, usize>,
@@ -189,7 +179,7 @@ pub struct ModuleParameters {
     pub name:                String,
     pub alternative_names:   Vec<String>,
     pub norm_score_minimum:  f32,
-    pub score_minimum:       usize,
+    pub score_minimum:       u64,
     pub length_minimum:      usize,
     pub reference_sequences: PathBuf,
     pub detect_chimera:      bool,
@@ -208,26 +198,29 @@ impl TryFrom<ModuleParameters> for SSWSortArgs {
             detect_chimera,
         } = params;
 
-        let references = FastaReader::from_filename(reference_sequences)?
+        let reference_annots = FastaReader::from_filename(reference_sequences)?
             .filter_map(|f| f.ok())
             .map(FastaNTAnnot::try_from)
             .collect::<Result<Vec<FastaNTAnnot>, Error>>()?;
 
         let length_factor = 2;
         let mut length_by_annot = HashMap::new();
-        for FastaNTAnnot {
-            name: _,
-            sequence,
-            taxon,
-        } in &references
-        {
-            // The cloning is hard to avoid but only once per reference, maybe for later
-            let this_len = sequence.len() * length_factor;
-            length_by_annot
-                .entry(taxon.clone())
-                .and_modify(|len| *len = max(*len, this_len))
-                .or_insert(this_len);
-        }
+
+        // Create references vector and populate length_by_annot in single pass
+        let references = reference_annots
+            .into_iter()
+            .map(|fa| {
+                let this_len = fa.sequence.len() * length_factor;
+                length_by_annot
+                    .entry(fa.taxon.clone())
+                    .and_modify(|len| *len = max(*len, this_len))
+                    .or_insert(this_len);
+
+                let reference_sequence_revcomp = fa.sequence.to_reverse_complement();
+
+                (fa, reference_sequence_revcomp)
+            })
+            .collect();
 
         Ok(SSWSortArgs {
             name,
