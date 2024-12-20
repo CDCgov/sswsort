@@ -34,9 +34,9 @@
 #  material.
 
 PROG=$(basename "$0" .sh)
-VERSION="v1.6.1"
+VERSION="v1.6.3"
 AUTHOR="S. S. Shepard"
-DATE="2024.05"
+DATE="2024.12"
 
 if [ "$#" -ne "3" ] && [ "$#" -ne "2" ]; then
     echo -e "\n$PROG $VERSION by $AUTHOR ($DATE)"
@@ -59,10 +59,10 @@ SINGLE_LOCAL_PROC=${IFX_LOCAL_PROCS:-16}
 GRID_PROCS=${IFX_GRID_PROCS:-140}
 GRID_ON=${IFX_GRID_DEF:-0}
 LIMIT_SSW=500 # threshold before grid
-SSW_M=2   # smith-waterman match score
-SSW_X=5   # smith-waterman mismatch penalty
-SSW_O=10  # smith-waterman gap open penalty
-SSW_E=1   # smith-waterman gap extension penalty
+SSW_M=2       # smith-waterman match score
+SSW_X=5       # smith-waterman mismatch penalty
+SSW_O=10      # smith-waterman gap open penalty
+SSW_E=1       # smith-waterman gap extension penalty
 SSW_OPTS="-x $SSW_X -m $SSW_M -o $SSW_O -e $SSW_E"
 
 # Process arguments
@@ -175,16 +175,16 @@ EOL
     if [ "$doGrid" -eq "1" ]; then
         # IRMA_QUEUE can be empty
         # shellcheck disable=SC2086
-        qsub ${IRMA_QUEUE:-""} -t 1-$procs:1 -N "N$name" -sync y -wd "$workdir" -j y -o "${script}.o" "${script}.sh" >> "${script}.2.o" 2>&1 \
+        qsub $IRMA_QUEUE -t 1-$procs:1 -N "N$name" -sync y -wd "$workdir" -j y -o "${script}.o" "${script}.sh" >> "${script}.2.o" 2>&1 \
             || {
-                cat "${script}.o" \
-                    && time_stamp "qsub of 'N$name' failed. Switching to master node." \
+                cat "${script}.o" 2> /dev/null || tail -n1 "${script}.2.o" 2> /dev/null
+                time_stamp "qsub of 'N$name' failed. Switching to master node." \
                     && $PARALLEL --workdir "$workdir" -j $SINGLE_LOCAL_PROC $BASH "${script}.sh" {} ::: $(seq $procs) >> "${script}.2.o" 2>&1 \
                     || warn "PARALLEL failed, showing errors: $(cat "${script}.2.o")"
             }
     else
         $PARALLEL --workdir "$workdir" -j "$procs" $BASH "${script}.sh" {} ::: $(seq $procs) >> "${script}.2.o" 2>&1 \
-            || warn "PARALLEL failed, showing errors: $(cat "${script}.2.o")"
+            || warn "PARALLEL failed, replaying errors: $(cat "${script}.2.o")"
     fi
 }
 

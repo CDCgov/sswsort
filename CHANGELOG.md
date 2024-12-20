@@ -1,5 +1,9 @@
 # SSWSORT
 
+## v1.6.3 (2024.12)
+
+- **Fix:** Grid engine execution was broken from v1.4+, now it is fixed.
+
 ## v1.6.2 (2024.08)
 
 - **Change:** RSV compound types renamed to match the conventions of other tooling, e.g., RSVA becomes RSV_AD.
