@@ -1,14 +1,11 @@
-#![allow(dead_code, clippy::single_element_loop, unused_variables)]
-
 use clap::Parser;
 use rayon::{ThreadPoolBuilder, iter::ParallelBridge, prelude::ParallelIterator};
 use sswsort::*;
-use std::path::PathBuf;
-use zoe::prelude::*;
+use std::{io::Write, path::PathBuf};
+use zoe::{define_whichever, prelude::*};
 
-// If we later want to match the shell script, we can use:
-// <https://docs.rs/git-version/latest/git_version/macro.git_describe.html>
-const PROGRAM_VERSION: &str = concat!(env!("CARGO_PKG_NAME"), " v", env!("CARGO_PKG_VERSION"));
+mod app;
+use app::*;
 
 #[derive(Debug, Parser)]
 #[command(author, version, about, long_about = None)]
@@ -21,46 +18,96 @@ pub struct ClassifierArgs {
     /// Name of the nucleotide sequences to classify in FASTA format.
     fasta_file: PathBuf,
 
-    // TO-DO: create flag for STDOUT. If it exists, this positional shall be ignored
-    // Mutually exclusive arguments
-    /// Name of the tab-separated-value file for classifier results.
-    output_file: PathBuf,
+    /// Name of the tab-separated-value file for classifier results. If none are
+    /// provided, STDOUT is used. If a directory is specified, a default
+    /// filename of `sswsort_output.tsv`
+    output_file: Option<PathBuf>,
 
     // Optional arguments
     /// Run in simultaneous multi-threaded mode.
     #[arg(short = 'T', long)]
     threads: bool,
-    // TO-DO: Implement a grid mode that takes the total processes and the process number
+
+    /// Automatically detect the array size and task id and write out the data
+    /// to a file at the prefixed location for downstream collation.
+    ///
+    /// An `output_file` is required and will be used with a partition suffix.
+    #[arg(short = 'G', long, requires = "output_file", conflicts_with_all = ["threads", "submit_grid_job"])]
+    is_grid_task: bool,
+
+    /// Submits and blocks on a grid engine job of the specified array size.
+    #[arg(short='S', long, conflicts_with_all = ["threads", "grid_job"])]
+    submit_grid_job: Option<usize>,
+}
+
+define_whichever! {
+    #[doc = "An enum representing the allowable output types"]
+    pub enum AnyOutput {
+        File(std::fs::File),
+        Stdout(std::io::Stdout),
+    }
+
+    impl Write for AnyOutput {}
 }
 
 fn main() {
     let args = ClassifierArgs::parse();
 
-    let query_reader = FastaReader::from_filename(args.fasta_file)
+    let query_reader = FastaReader::from_filename(&args.fasta_file)
         .unwrap_or_die("Cannot open FASTA file!")
         .filter_map(|f| f.ok())
         .map(|seq| seq.filter_to_dna());
 
     let params = get_sswsort_module_args(&args.module).unwrap_or_die("Failed to load module data!");
 
-    let results: Vec<(ClassificationResult, String, usize)> = if args.threads {
+    if let Some(n) = args.submit_grid_job
+        && let Some(output) = args.output_file
+    {
+        submit_job_sync(n, &args.module, args.fasta_file, output).unwrap_or_die("Qsub job submission failed!");
+        return;
+    }
+
+    let mut grid = None;
+    let mut w = std::io::BufWriter::new(if let Some(mut path) = args.output_file {
+        if args.is_grid_task {
+            let g = Grid::from_env();
+            let id = g.task_id;
+            grid = Some(g);
+
+            path.set_file_name(get_partition_filename(&path, id));
+        } else if path.is_dir() {
+            path.set_file_name("sswsort_output.tsv");
+        }
+        AnyOutput::File(std::fs::File::create(path).unwrap_or_die("Cannot create output file!"))
+    } else {
+        AnyOutput::Stdout(std::io::stdout())
+    });
+
+    if args.threads {
         let physical_cpus = num_cpus::get_physical();
         ThreadPoolBuilder::new().num_threads(physical_cpus).build_global().unwrap();
 
-        query_reader
+        let results: Vec<(ClassificationResult, String, usize)> = query_reader
             .par_bridge()
             .map(|query| (classify(&query, &params), query.name, query.sequence.len()))
-            .collect()
+            .collect();
+
+        write_results(&mut w, results.into_iter(), &args.module).unwrap_or_die("Could not write to file!");
+    } else if let Some(g) = grid {
+        // 0-based skip so we start on our parition
+        let offset = (g.task_id - g.task_first) / g.task_stepsize;
+        // modulus for interleaved partitioning
+        let array_size = (g.task_last - g.task_first + 1).div_ceil(g.task_stepsize);
+
+        let iter_results = query_reader
+            .skip(offset)
+            .step_by(array_size)
+            .map(|query| (classify(&query, &params), query.name, query.sequence.len()));
+        write_results(&mut w, iter_results, &args.module).unwrap_or_die("Could not write to file!");
     } else {
-        query_reader
-            .map(|query| (classify(&query, &params), query.name, query.sequence.len()))
-            .collect()
+        let iter_results = query_reader.map(|query| (classify(&query, &params), query.name, query.sequence.len()));
+        write_results(&mut w, iter_results, &args.module).unwrap_or_die("Could not write to file!");
     };
 
-    for (classification, query_name, seq_length) in results.into_iter() {
-        println!(
-            "{PROGRAM_VERSION}\t{module_name}\t{query_name}\t{classification}",
-            module_name = args.module,
-        );
-    }
+    w.flush().expect("Flushing failed, there may be missing data");
 }
