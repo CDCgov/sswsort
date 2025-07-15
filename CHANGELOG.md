@@ -1,5 +1,9 @@
 # SSWSORT
 
+## v2.0.0 (2025.10)
+
+- **Change:**
+
 ## v1.6.3 (2024.12)
 
 - **Fix:** Grid engine execution was broken from v1.4+, now it is fixed.

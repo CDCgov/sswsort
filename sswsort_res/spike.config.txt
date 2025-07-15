@@ -1,1 +1,0 @@
-THRESHOLDS="--norm-score-minimum 0.7 --score-minimum 60 --length-minimum 25"

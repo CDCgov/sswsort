@@ -1,7 +1,7 @@
 use clap::Parser;
 use rayon::{ThreadPoolBuilder, iter::ParallelBridge, prelude::ParallelIterator};
 use sswsort::*;
-use std::{io::Write, path::PathBuf};
+use std::{io::Write, num::NonZero, path::PathBuf};
 use zoe::{define_whichever, prelude::*};
 
 mod app;
@@ -18,15 +18,15 @@ pub struct ClassifierArgs {
     /// Name of the nucleotide sequences to classify in FASTA format.
     fasta_file: PathBuf,
 
+    // Optional arguments
     /// Name of the tab-separated-value file for classifier results. If none are
     /// provided, STDOUT is used. If a directory is specified, a default
     /// filename of `sswsort_output.tsv`
     output_file: Option<PathBuf>,
 
-    // Optional arguments
     /// Run in simultaneous multi-threaded mode.
     #[arg(short = 'T', long)]
-    threads: bool,
+    threads: Option<NonZero<usize>>,
 
     /// Automatically detect the array size and task id and write out the data
     /// to a file at the prefixed location for downstream collation.
@@ -36,7 +36,7 @@ pub struct ClassifierArgs {
     is_grid_task: bool,
 
     /// Submits and blocks on a grid engine job of the specified array size.
-    #[arg(short='S', long, conflicts_with_all = ["threads", "grid_job"])]
+    #[arg(short='S', long, conflicts_with_all = ["threads", "is_grid_task"])]
     submit_grid_job: Option<usize>,
 }
 
@@ -52,6 +52,7 @@ define_whichever! {
 
 fn main() {
     let args = ClassifierArgs::parse();
+    let use_stderr = args.output_file.is_none();
 
     let query_reader = FastaReader::from_filename(&args.fasta_file)
         .unwrap_or_die("Cannot open FASTA file!")
@@ -66,6 +67,15 @@ fn main() {
         submit_job_sync(n, &args.module, args.fasta_file, output).unwrap_or_die("Qsub job submission failed!");
         return;
     }
+
+    time_stamp(
+        &format!(
+            "Doing sort on '{query}' with module '{module}'.",
+            query = args.fasta_file.file_name().unwrap().to_string_lossy(),
+            module = args.module
+        ),
+        use_stderr,
+    );
 
     let mut grid = None;
     let mut w = std::io::BufWriter::new(if let Some(mut path) = args.output_file {
@@ -83,17 +93,7 @@ fn main() {
         AnyOutput::Stdout(std::io::stdout())
     });
 
-    if args.threads {
-        let physical_cpus = num_cpus::get_physical();
-        ThreadPoolBuilder::new().num_threads(physical_cpus).build_global().unwrap();
-
-        let results: Vec<(ClassificationResult, String, usize)> = query_reader
-            .par_bridge()
-            .map(|query| (classify(&query, &params), query.name, query.sequence.len()))
-            .collect();
-
-        write_results(&mut w, results.into_iter(), &args.module).unwrap_or_die("Could not write to file!");
-    } else if let Some(g) = grid {
+    if let Some(g) = grid {
         // 0-based skip so we start on our parition
         let offset = (g.task_id - g.task_first) / g.task_stepsize;
         // modulus for interleaved partitioning
@@ -104,10 +104,28 @@ fn main() {
             .step_by(array_size)
             .map(|query| (classify(&query, &params), query.name, query.sequence.len()));
         write_results(&mut w, iter_results, &args.module).unwrap_or_die("Could not write to file!");
+    } else if args.threads.is_none_or(|n| n.get() > 1) {
+        let t = if let Some(n) = args.threads {
+            n.get()
+        } else if let Some(v) = std::env::var("IFX_LOCAL_PROCS").ok().and_then(|v| v.parse::<usize>().ok()) {
+            v
+        } else {
+            num_cpus::get_physical()
+        };
+        ThreadPoolBuilder::new().num_threads(t).build_global().unwrap();
+
+        let results: Vec<(ClassificationResult, String, usize)> = query_reader
+            .par_bridge()
+            .map(|query| (classify(&query, &params), query.name, query.sequence.len()))
+            .collect();
+
+        write_results(&mut w, results.into_iter(), &args.module).unwrap_or_die("Could not write to file!");
     } else {
         let iter_results = query_reader.map(|query| (classify(&query, &params), query.name, query.sequence.len()));
         write_results(&mut w, iter_results, &args.module).unwrap_or_die("Could not write to file!");
     };
 
     w.flush().expect("Flushing failed, there may be missing data");
+
+    time_stamp("finished", use_stderr);
 }

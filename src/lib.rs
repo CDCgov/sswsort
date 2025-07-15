@@ -3,7 +3,7 @@ use serde_derive::Deserialize;
 use std::{cmp::max, collections::BTreeSet, fmt, fs::read_to_string, io::Error, io::ErrorKind, path::PathBuf};
 use toml::from_str;
 use zoe::{
-    alignment::LocalProfiles,
+    alignment::{LocalProfiles, ProfileSets},
     data::{WeightMatrix, fasta::FastaNT, fasta::FastaNTAnnot},
     prelude::*,
 };
@@ -32,58 +32,44 @@ impl fmt::Display for Strand {
     }
 }
 
-#[non_exhaustive]
-pub enum ClassificationResult {
-    Unrecognizable,
+pub enum ClassificationResult<'a> {
+    Unrecognizable {
+        best_score: u32,
+        strand:     Strand,
+    },
     Classification {
-        taxon:      String,
-        best_score: u64,
+        taxon:      &'a str,
+        best_score: u32,
         strand:     Strand,
     },
     Chimeric {
-        taxa:   Vec<String>,
+        taxa:   Vec<&'a str>,
         strand: Strand,
     },
     UnusuallyLong {
-        taxon:      String,
-        best_score: u64,
+        taxon:      &'a str,
+        best_score: u32,
         strand:     Strand,
     },
 }
 
-impl fmt::Display for ClassificationResult {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ClassificationResult::Unrecognizable => write!(f, "was UNRECOGNIZABLE!"),
-            ClassificationResult::Classification {
-                taxon,
-                best_score,
-                strand,
-            } => {
-                write!(f, "{taxon}\t{best_score}\t{strand}")
-            }
-            ClassificationResult::Chimeric { taxa, strand } => {
-                write!(f, "Chimeric: {}\t{}", taxa.join("+"), strand)
-            }
-            ClassificationResult::UnusuallyLong {
-                taxon,
-                best_score,
-                strand,
-            } => {
-                write!(f, "Unusually Long: {taxon}\t{best_score}\t{strand}")
-            }
+impl<'a> ClassificationResult<'a> {
+    fn none() -> Self {
+        ClassificationResult::Unrecognizable {
+            best_score: 0,
+            strand:     Strand::Unknown,
         }
     }
 }
 
 #[inline]
 fn calculate_alignment_score<'a>(
-    reference: &'a (FastaNTAnnot, Nucleotides), query_profile: &LocalProfiles<64, 32, 16, 8, 5>,
-) -> (u64, &'a str, Strand) {
+    reference: &'a (FastaNTAnnot, Nucleotides), query_profile: &LocalProfiles<64, 32, 16, 5>,
+) -> (u32, &'a str, Strand) {
     let (reference, reference_seq_revcomp) = reference;
 
-    let score_pos = query_profile.smith_waterman_score_from_i8(&reference.sequence);
-    let score_neg = query_profile.smith_waterman_score_from_i8(reference_seq_revcomp);
+    let score_pos = query_profile.smith_waterman_score_from_i8(&reference.sequence).get();
+    let score_neg = query_profile.smith_waterman_score_from_i8(reference_seq_revcomp).get();
 
     match (score_pos, score_neg) {
         (Some(pos), Some(neg)) if neg > pos => (neg, reference.taxon.as_str(), Strand::Minus),
@@ -92,14 +78,14 @@ fn calculate_alignment_score<'a>(
     }
 }
 
-pub fn classify(query: &FastaNT, params: &SSWSortArgs) -> ClassificationResult {
+pub fn classify<'a>(query: &FastaNT, params: &'a SSWSortArgs) -> ClassificationResult<'a> {
     if query.sequence.len() < params.length_minimum {
-        return ClassificationResult::Unrecognizable;
+        return ClassificationResult::none();
     }
 
     let Ok(query_profile) = LocalProfiles::new_with_w512(&query.sequence, &MATRIX, GAP_OPEN, GAP_EXTEND) else {
         eprintln!("WARNING: '{id}' was empty or had bad scoring weights.", id = query.name);
-        return ClassificationResult::Unrecognizable;
+        return ClassificationResult::none();
     };
 
     let taxa = params
@@ -121,7 +107,7 @@ pub fn classify(query: &FastaNT, params: &SSWSortArgs) -> ClassificationResult {
             .max_by_key(|&(score, _, _)| score);
 
         if valid_chimera_taxa.len() > 1 {
-            let taxa = valid_chimera_taxa.into_iter().rev().map(str::to_string).collect();
+            let taxa = valid_chimera_taxa.into_iter().rev().collect();
             return ClassificationResult::Chimeric {
                 taxa,
                 strand: Strand::Unknown,
@@ -132,29 +118,29 @@ pub fn classify(query: &FastaNT, params: &SSWSortArgs) -> ClassificationResult {
         taxa.max_by_key(|&(score, _, _)| score)
     };
 
-    if let Some((best_score, taxon, strand)) = best
-        && (best_score >= params.score_minimum
-            || best_score as f32 / query.sequence.len() as f32 >= params.norm_score_minimum)
-    {
-        let taxon: String = taxon.to_string();
-
-        if let Some(&max_length) = params.length_by_annot.get(&taxon)
-            && query.sequence.len() >= max_length
+    if let Some((best_score, taxon, strand)) = best {
+        if best_score >= params.score_minimum || best_score as f32 / query.sequence.len() as f32 >= params.norm_score_minimum
         {
-            ClassificationResult::UnusuallyLong {
-                taxon,
-                best_score,
-                strand,
+            if let Some(&max_length) = params.length_by_annot.get(taxon)
+                && query.sequence.len() >= max_length
+            {
+                ClassificationResult::UnusuallyLong {
+                    taxon,
+                    best_score,
+                    strand,
+                }
+            } else {
+                ClassificationResult::Classification {
+                    taxon,
+                    best_score,
+                    strand,
+                }
             }
         } else {
-            ClassificationResult::Classification {
-                taxon,
-                best_score,
-                strand,
-            }
+            ClassificationResult::Unrecognizable { best_score, strand }
         }
     } else {
-        ClassificationResult::Unrecognizable
+        ClassificationResult::none()
     }
 }
 
@@ -162,7 +148,7 @@ pub struct SSWSortArgs {
     pub name:               String,
     pub references:         Vec<(FastaNTAnnot, Nucleotides)>,
     pub norm_score_minimum: f32,
-    pub score_minimum:      u64,
+    pub score_minimum:      u32,
     pub length_minimum:     usize,
     pub detect_chimera:     bool,
     pub length_by_annot:    HashMap<String, usize>,
@@ -179,7 +165,7 @@ pub struct ModuleParameters {
     pub name:                String,
     pub alternative_names:   Vec<String>,
     pub norm_score_minimum:  f32,
-    pub score_minimum:       u64,
+    pub score_minimum:       u32,
     pub length_minimum:      usize,
     pub reference_sequences: PathBuf,
     pub detect_chimera:      bool,

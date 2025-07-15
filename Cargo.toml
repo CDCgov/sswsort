@@ -6,17 +6,19 @@ authors = ["Samuel S. Shepard", "Samuel Wiley"]
 rust-version = "1.88"
 
 [dependencies]
-clap = { version = "4", features = ["derive"] }
-rayon = "*"
-zoe = { git = "https://github.com/CDCgov/zoe.git", branch = "main", default-features = false, features = [
+zoe = { version = "0.0.21", default-features = false, features = [
     "multiversion",
 ] }
-toml = "*"
-serde = "*"
-serde_derive = "*"
-foldhash = "*"
-num_cpus = "*"
+clap = { version = "4", features = ["derive"] }
+rayon = "1"
+toml = "0.9"
+serde = "1"
+serde_derive = "1"
+foldhash = "0.2"
+num_cpus = "1"
+jiff = "0.2"
 
 [profile.release]
 strip = true
-lto = "thin"
+lto = "fat"
+codegen-units = 1
