@@ -60,19 +60,19 @@ fn main() {
         .map(|seq| seq.filter_to_dna());
 
     let params = get_sswsort_module_args(&args.module).unwrap_or_die("Failed to load module data!");
+    let canonical_module = params.name.as_str();
 
     if let Some(n) = args.submit_grid_job
         && let Some(output) = args.output_file
     {
-        submit_job_sync(n, &args.module, args.fasta_file, output).unwrap_or_die("Qsub job submission failed!");
+        submit_job_sync(n, canonical_module, args.fasta_file, output).unwrap_or_die("Qsub job submission failed!");
         return;
     }
 
     time_stamp(
         &format!(
-            "Doing sort on '{query}' with module '{module}'.",
+            "Doing sort on '{query}' with module '{canonical_module}'.",
             query = args.fasta_file.file_name().unwrap().to_string_lossy(),
-            module = args.module
         ),
         use_stderr,
     );
@@ -103,7 +103,7 @@ fn main() {
             .skip(offset)
             .step_by(array_size)
             .map(|query| (classify(&query, &params), query.name, query.sequence.len()));
-        write_results(&mut w, iter_results, &args.module).unwrap_or_die("Could not write to file!");
+        write_results(&mut w, iter_results, canonical_module).unwrap_or_die("Could not write to file!");
     } else if args.threads.is_none_or(|n| n.get() > 1) {
         let t = if let Some(n) = args.threads {
             n.get()
@@ -119,10 +119,10 @@ fn main() {
             .map(|query| (classify(&query, &params), query.name, query.sequence.len()))
             .collect();
 
-        write_results(&mut w, results.into_iter(), &args.module).unwrap_or_die("Could not write to file!");
+        write_results(&mut w, results.into_iter(), canonical_module).unwrap_or_die("Could not write to file!");
     } else {
         let iter_results = query_reader.map(|query| (classify(&query, &params), query.name, query.sequence.len()));
-        write_results(&mut w, iter_results, &args.module).unwrap_or_die("Could not write to file!");
+        write_results(&mut w, iter_results, canonical_module).unwrap_or_die("Could not write to file!");
     };
 
     w.flush().expect("Flushing failed, there may be missing data");

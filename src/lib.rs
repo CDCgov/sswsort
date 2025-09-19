@@ -1,6 +1,13 @@
 use foldhash::{HashMap, HashMapExt};
 use serde_derive::Deserialize;
-use std::{cmp::max, collections::BTreeSet, fmt, fs::read_to_string, io::Error, io::ErrorKind, path::PathBuf};
+use std::{
+    cmp::max,
+    collections::BTreeSet,
+    fmt,
+    fs::read_to_string,
+    io::{Error, ErrorKind},
+    path::PathBuf,
+};
 use toml::from_str;
 use zoe::{
     alignment::{LocalProfiles, ProfileSets},
@@ -65,16 +72,23 @@ impl<'a> ClassificationResult<'a> {
 #[inline]
 fn calculate_alignment_score<'a>(
     reference: &'a (FastaNTAnnot, Nucleotides), query_profile: &LocalProfiles<64, 32, 16, 5>,
-) -> (u32, &'a str, Strand) {
+) -> Option<(u32, &'a str, Strand)> {
     let (reference, reference_seq_revcomp) = reference;
 
     let score_pos = query_profile.smith_waterman_score_from_i8(&reference.sequence).get();
     let score_neg = query_profile.smith_waterman_score_from_i8(reference_seq_revcomp).get();
 
     match (score_pos, score_neg) {
-        (Some(pos), Some(neg)) if neg > pos => (neg, reference.taxon.as_str(), Strand::Minus),
-        (Some(pos), Some(_)) => (pos, reference.taxon.as_str(), Strand::Plus),
-        _ => panic!("Alignment failed!"),
+        (Some(pos), Some(neg)) => {
+            if pos >= neg {
+                Some((pos, reference.taxon.as_str(), Strand::Plus))
+            } else {
+                Some((neg, reference.taxon.as_str(), Strand::Minus))
+            }
+        }
+        (Some(pos), None) => Some((pos, reference.taxon.as_str(), Strand::Plus)),
+        (None, Some(neg)) => Some((neg, reference.taxon.as_str(), Strand::Minus)),
+        (None, None) => None,
     }
 }
 
@@ -91,7 +105,7 @@ pub fn classify<'a>(query: &FastaNT, params: &'a SSWSortArgs) -> ClassificationR
     let taxa = params
         .references
         .iter()
-        .map(|reference| calculate_alignment_score(reference, &query_profile));
+        .filter_map(|reference| calculate_alignment_score(reference, &query_profile));
 
     // Does not allocate unless data is pushed
     let mut valid_chimera_taxa = BTreeSet::new();
@@ -163,6 +177,7 @@ pub struct TomlConfig {
 #[derive(Deserialize, Debug, Default)]
 pub struct ModuleParameters {
     pub name:                String,
+    pub version:             Option<String>,
     pub alternative_names:   Vec<String>,
     pub norm_score_minimum:  f32,
     pub score_minimum:       u32,
@@ -175,7 +190,8 @@ impl TryFrom<ModuleParameters> for SSWSortArgs {
     type Error = std::io::Error;
     fn try_from(params: ModuleParameters) -> Result<Self, Self::Error> {
         let ModuleParameters {
-            name,
+            mut name,
+            version,
             alternative_names: _,
             norm_score_minimum,
             score_minimum,
@@ -207,6 +223,11 @@ impl TryFrom<ModuleParameters> for SSWSortArgs {
                 (fa, reference_sequence_revcomp)
             })
             .collect();
+
+        if let Some(v) = version {
+            name.push_str(" v");
+            name.push_str(&v);
+        }
 
         Ok(SSWSortArgs {
             name,

@@ -16,31 +16,34 @@ Usage: sswsort [OPTIONS] <MODULE> <FASTA_FILE> [OUTPUT_FILE]
 
 Arguments:
   <MODULE>
-          Name of the classification module
+        Name of the classification module
 
   <FASTA_FILE>
-          Name of the nucleotide sequences to classify in FASTA format
+        Name of the nucleotide sequences to classify in FASTA format
 
   [OUTPUT_FILE]
-          Name of the tab-separated-value file for classifier results. If none are provided, STDOUT is used. If a directory is specified, a default filename of `sswsort_output.tsv`
+        Name of the tab-separated-value file for classifier results. If none
+        are provided, STDOUT is used. If a directory is specified, a default
+        filename of `sswsort_output.tsv` is used.
 
 Options:
   -T, --threads <THREADS>
-          Run in simultaneous multi-threaded mode
+        Run in simultaneous multi-threaded mode
 
   -G, --is-grid-task
-          Automatically detect the array size and task id and write out the data to a file at the prefixed location for downstream collation.
-
-          An `output_file` is required and will be used with a partition suffix.
+        Automatically detect the array size and task id and write out the data
+        to a file at the prefixed location for downstream collation.
+        
+        An `output_file` is required and will be used with a partition suffix.
 
   -S, --submit-grid-job <SUBMIT_GRID_JOB>
-          Submits and blocks on a grid engine job of the specified array size
+        Submits and blocks on a grid engine job of the specified array size
 
   -h, --help
-          Print help (see a summary with '-h')
+        Print help (see a summary with '-h')
 
   -V, --version
-          Print version
+        Print version
 ```
 
 Self-tests:
@@ -50,6 +53,12 @@ Self-tests:
 ./sswsort cov-beta sswsort_res/cov-beta.fasta --threads
 ./sswsort rsv sswsort_res/rsv.fasta --threads
 ```
+
+## Outputs
+
+SSWSORT will provide output in a tab-separated format, with columns representing:
+
+Program version, Reference module, Query name, Classified taxon, Classification score, Sequence length, Strand
 
 ## Notices
 
