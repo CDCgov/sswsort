@@ -8,6 +8,24 @@ reference_sequences = "flu-ABCD90P.fasta"
 detect_chimera = true
 
 [[classification_module]]
+name = "flu2"
+alternative_names = ["flu-v7"]
+norm_score_minimum = 1.0
+score_minimum = 100
+length_minimum = 25
+reference_sequences = "flu-v7.fasta"
+detect_chimera = true
+
+[[classification_module]]
+name = "flu3"
+alternative_names = ["flu-v5"]
+norm_score_minimum = 1.0
+score_minimum = 100
+length_minimum = 25
+reference_sequences = "flu-v5.fasta"
+detect_chimera = true
+
+[[classification_module]]
 name = "cov"
 alternative_names = ["cov-beta", "covid", "sc2"]
 norm_score_minimum = 1.0
