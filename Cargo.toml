@@ -2,11 +2,11 @@
 name = "sswsort"
 version = "2.0.0"
 edition = "2024"
-authors = ["Samuel S. Shepard", "Samuel Wiley"]
+authors = ["Samuel S. Shepard", "Samuel Wiley", "David Hufnagel"]
 rust-version = "1.88"
 
 [dependencies]
-zoe = { version = "0.0.21", default-features = false, features = [
+zoe = { version = "0.0.25", default-features = false, features = [
     "multiversion",
 ] }
 clap = { version = "4", features = ["derive"] }
@@ -17,6 +17,7 @@ serde_derive = "1"
 foldhash = "0.2"
 num_cpus = "1"
 jiff = "0.2"
+itoa = "1"
 
 [profile.release]
 strip = true

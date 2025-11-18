@@ -2,7 +2,7 @@ use clap::Parser;
 use rayon::{ThreadPoolBuilder, iter::ParallelBridge, prelude::ParallelIterator};
 use sswsort::*;
 use std::{io::Write, num::NonZero, path::PathBuf};
-use zoe::{define_whichever, prelude::*};
+use zoe::{data::fasta::FastaSeq, define_whichever, prelude::*};
 
 mod app;
 use app::*;
@@ -41,7 +41,12 @@ pub struct ClassifierArgs {
 }
 
 define_whichever! {
-    #[doc = "An enum representing the allowable output types"]
+    /// An enum representing the allowable output types.
+    ///
+    /// The types are not wrapped in a [`BufWriter`], so it is advised to do
+    /// that before using [`AnyOutput`].
+    ///
+    /// [`BufWriter`]: std::io::BufWriter
     pub enum AnyOutput {
         File(std::fs::File),
         Stdout(std::io::Stdout),
@@ -56,8 +61,8 @@ fn main() {
 
     let query_reader = FastaReader::from_filename(&args.fasta_file)
         .unwrap_or_die("Cannot open FASTA file!")
-        .filter_map(|f| f.ok())
-        .map(|seq| seq.filter_to_dna());
+        .filter_map(Result::ok)
+        .map(FastaSeq::filter_to_dna);
 
     let params = get_sswsort_module_args(&args.module).unwrap_or_die("Failed to load module data!");
     let canonical_module = params.name.as_str();
@@ -65,7 +70,7 @@ fn main() {
     if let Some(n) = args.submit_grid_job
         && let Some(output) = args.output_file
     {
-        submit_job_sync(n, canonical_module, args.fasta_file, output).unwrap_or_die("Qsub job submission failed!");
+        submit_job_sync(n, canonical_module, &args.fasta_file, output).unwrap_or_die("Qsub job submission failed!");
         return;
     }
 
@@ -114,7 +119,7 @@ fn main() {
         };
         ThreadPoolBuilder::new().num_threads(t).build_global().unwrap();
 
-        let results: Vec<(ClassificationResult, String, usize)> = query_reader
+        let results: Vec<([ClassificationResult; 2], String, usize)> = query_reader
             .par_bridge()
             .map(|query| (classify(&query, &params), query.name, query.sequence.len()))
             .collect();
@@ -123,7 +128,7 @@ fn main() {
     } else {
         let iter_results = query_reader.map(|query| (classify(&query, &params), query.name, query.sequence.len()));
         write_results(&mut w, iter_results, canonical_module).unwrap_or_die("Could not write to file!");
-    };
+    }
 
     w.flush().expect("Flushing failed, there may be missing data");
 

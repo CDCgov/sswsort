@@ -18,8 +18,8 @@ impl Grid {
     ///
     /// ## Panics
     ///
-    /// Panics if required variables `SGE_TASK_ID`` or `SGE_TASK_LAST` are not set.
-    /// Uses default values for optional variables if not present.
+    /// Panics if required variables `SGE_TASK_ID` or `SGE_TASK_LAST` are not
+    /// set. Uses default values for optional variables if not present.
     pub fn from_env() -> Self {
         Self {
             task_id:       env::var("SGE_TASK_ID")
@@ -57,52 +57,41 @@ pub(crate) fn get_partition_filename(path: &Path, id: usize) -> String {
 
 /// Submit a job to Grid Engine and block until completion.
 ///
-/// # Arguments
-/// * `task_count` - Number of array tasks to submit
-/// * `input_path` - Path to the input file
-/// * `output_path` - Path to the output file
+/// ## Arguments
 ///
-/// # Panics
-/// Panics if the qsub command fails or returns a non-zero exit code.
+/// - `task_count` - Number of array tasks to submit
+/// - `input_path` - Path to the input file
+/// - `output_path` - Path to the output file
+///
+/// ## Panics
+///
+/// Panics if the `qsub` command fails or returns a non-zero exit code.
 pub fn submit_job_sync(
-    task_count: usize, module: &str, input_path: PathBuf, mut output_path: PathBuf,
+    task_count: usize, module: &str, input_path: &Path, mut output_path: PathBuf,
 ) -> Result<(), std::io::Error> {
     let current_exe = env::current_exe().expect("Failed to get current executable path");
 
     let mut log_path = output_path.clone();
     let log_file = log_path
         .file_stem()
-        .map(|s| format!("{}_log.txt", s.to_string_lossy()))
-        .unwrap_or_else(|| "sswsort_log.txt".to_string());
+        .map(|s| {
+            let mut out = s.to_owned();
+            out.push("_log.txt");
+            out
+        })
+        .unwrap_or_else(|| "sswsort_log.txt".into());
     log_path.set_file_name(log_file);
-    let (exec, input, output, log) = (
-        current_exe.to_str().expect("Invalid executable path"),
-        input_path.to_str().expect("Invalid input path"),
-        output_path.to_str().expect("Invalid output path"),
-        log_path.to_str().expect("Log invallid and failed"),
-    );
 
     let mut cmd = Command::new("qsub");
-    cmd.args([
-        "-t",
-        &format!("1-{task_count}"),
-        "-sync",
-        "yes",
-        "-cwd",
-        "-j",
-        "yes",
-        "-o",
-        log,
-        "-b",
-        "yes",
-        exec,
-        module,
-        input,
-        output,
-        "--is-grid-task",
-    ])
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped());
+    cmd.args(["-t", &format!("1-{task_count}"), "-sync", "yes", "-cwd", "-j", "yes", "-o"])
+        .arg(log_path)
+        .args(["-b", "yes"])
+        .arg(current_exe)
+        .arg(module)
+        .args([input_path, &output_path])
+        .arg("--is-grid-task")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
 
     eprintln!("Executing: {cmd:#?}");
 

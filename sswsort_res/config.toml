@@ -1,20 +1,11 @@
 [[classification_module]]
 name = "flu"
-alternative_names = ["flu-ABCD90P"]
-norm_score_minimum = 1.0
-score_minimum = 100
-length_minimum = 25
-reference_sequences = "flu-ABCD90P.fasta"
-detect_chimera = true
-
-[[classification_module]]
-name = "flu2"
 version = "8"
 alternative_names = ["flu-v7", "flu-v8", "flu2"]
 norm_score_minimum = 1.0
 score_minimum = 100
 length_minimum = 25
-reference_sequences = "flu2.fasta"
+reference_sequences = "flu.fasta"
 detect_chimera = true
 
 

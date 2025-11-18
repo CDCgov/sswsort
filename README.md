@@ -58,7 +58,47 @@ Self-tests:
 
 SSWSORT will provide output in a tab-separated format, with columns representing:
 
-Program version, Reference module, Query name, Classified taxon, Classification score, Sequence length, Strand
+Program version, Reference module, Query name, Primary classified taxon, Primary
+classification score, Sequence length, Primary strand, Secondary classified
+taxon, Secondary score, Secondary strand
+
+To receive a classification, the query must align with one of the reference
+sequences with a score greater than or equal to the `score_minimum`, or a
+normalized score greater than or equal to the `norm_score_minimum`, equal to the
+score divided by the length of the query. These parameters have default values
+that can be changed in the `config.toml`.
+
+Classifications fall into the following categories:
+- A single taxon: the taxon with the highest score for the provided query
+- `*Unusually Long` with a single taxon: this occurs when the query length is
+  over twice the length of the reference it is matched to
+- `*Chimeric` with a `+`- separated list of taxa: the query matches to multiple
+  different reference taxa with scores above 800 each. Chimera detection can be
+  disabled in `config.toml`
+- `*Unresolvable` with a `,`- separated list of taxa: the query matches to
+  multiple reference taxa with exactly matching scores
+- `UNRECOGNIZABLE`: the query did not match to any reference with a high enough
+  score or normalized score to pass the threshold. Queries with `*Chimeric` or
+  `*Unresolvable` primary classifications are also given `UNRECOGNIZABLE` for
+  their secondary classification
+
+## Alignment and Scoring
+
+SSWSORT utilizes a Striped Smith-Waterman alignment algorithm to align each
+query sequence to a list of references before classifying the query with the reference taxa that had the highest alignment score. The alignment uses the following weights for scoring:
+
+- Match: 2
+- Mismatch: -5
+- Gap open: -10
+- Gap extend: -5
+
+`N` Nucleotides and unrecognized characters are treated as 0-penalty mismatches.
+So, a query with one or more `N` bases will align with an identical score as a
+query with those bases missing.
+
+Leading and trailing `N`'s in a query sequence are removed prior to alignment.
+This will not affect the alignment score, but will affect the sequence length in
+the output, as well as the normalized score, which uses the edited length.
 
 ## Notices
 
