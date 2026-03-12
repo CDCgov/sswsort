@@ -1,0 +1,21 @@
+[package]
+name = "sswsort-cli"
+version = "2.0.0"
+edition = "2024"
+authors = ["Samuel S. Shepard", "Samuel Wiley", "David Hufnagel"]
+rust-version = "1.96"
+
+[dependencies]
+zoe = { workspace = true }
+sswsort = { path = "../sswsort" }
+clap = { version = "4", features = ["derive"] }
+rayon = "1"
+num_cpus = "1"
+jiff = "0.2"
+itoa = "1"
+
+
+[profile.release]
+strip = true
+lto = "fat"
+codegen-units = 1

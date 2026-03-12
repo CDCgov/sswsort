@@ -1,0 +1,51 @@
+image: rustlang/rust:nightly
+
+stages:
+  - build
+  - test
+  - deploy
+
+cache: {}
+
+sswsort-build:
+  stage: build
+  tags:
+    - docker
+  script:
+   - cargo build --workspace --release
+  artifacts:
+    paths:
+      - .cargo
+      - target
+      - sswsort_res
+
+sswsort-test:
+  stage: test
+  tags:
+    - docker
+  dependencies:
+    - sswsort-build
+  script:
+    - perl .github/scripts/check_versions_changelog.perl
+    - cargo test --workspace
+    - cargo doc --workspace --no-deps --document-private-items
+  artifacts:
+    paths:
+      - target/doc
+    expire_in: 12 hours
+
+pages:
+  stage: deploy
+  image: rustlang/rust:nightly
+  tags:
+    - pages
+  rules:
+    = if: $CI_COMMIT_BRANCH == "master"
+  dependencies:
+    - sswsort-test
+  script:
+    - mv target/doc public/
+    - echo "<meta http-equiv=\"refresh\" content=\"0; url=sswsort\">" > public/index.html
+  artifacts:
+    paths:
+      - public

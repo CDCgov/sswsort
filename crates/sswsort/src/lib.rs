@@ -46,6 +46,9 @@ fn trim_n(sequence: &Nucleotides) -> NucleotidesView<'_> {
 }
 
 impl fmt::Display for Strand {
+    /// Display options for [`Strand`]. Uses "+" or "-" for positive and negative
+    /// strand, and "*" in cases where the [`Strand`] is unknown, such as
+    /// `UNRESOLVABLE`, `UNRECOGNIZABLE`, and `CHIMERIC` classifications.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Strand::Plus => write!(f, "+"),
@@ -166,6 +169,39 @@ fn calculate_alignment_score<'a>(
     }
 }
 
+/// Takes an iterator of `(score, taxon, Strand)` and finds the top result,
+/// allowing for ties, and ensuring no repeated taxa.
+fn top_with_ties<'a, I>(iter: I) -> Option<(u32, Vec<&'a str>, Strand)>
+where
+    I: IntoIterator<Item = (u32, &'a str, Strand)>, {
+    let mut top_score = None;
+    let mut top_taxa_strand = BTreeMap::new();
+
+    for (score, taxon, strand) in iter {
+        match top_score {
+            None => {
+                top_score = Some(score);
+                top_taxa_strand.insert(taxon, strand);
+            }
+            Some(tscore) if score > tscore => {
+                top_score = Some(score);
+                top_taxa_strand.clear();
+                top_taxa_strand.insert(taxon, strand);
+            }
+            Some(tscore) if score == tscore => {
+                top_taxa_strand.insert(taxon, strand);
+            }
+            _ => {}
+        }
+    }
+
+    let strand = *top_taxa_strand.values().next()?;
+    let score = top_score?;
+    let taxa = top_taxa_strand.keys().copied().collect();
+
+    Some((score, taxa, strand))
+}
+
 /// Takes an iterator of `(score, taxon, Strand)` and finds the top two results,
 /// allowing for ties, and ensuring no repeated taxa in the top two.
 fn top_two_with_ties<'a, I>(iter: I) -> [Option<(u32, Vec<&'a str>, Strand)>; 2]
@@ -245,7 +281,7 @@ where
 /// [`ClassificationResult`].
 ///
 /// If either is `None`, then [`ClassificationResult::none`] is used.
-fn classify_top_two<'a>(
+fn classify_top_two_helper<'a>(
     top_2: [Option<(u32, Vec<&'a str>, Strand)>; 2], params: &'a SSWSortArgs, query_len: usize,
 ) -> [ClassificationResult<'a>; 2] {
     let mut classified = top_2.map(|info| {
@@ -265,9 +301,55 @@ fn classify_top_two<'a>(
     classified
 }
 
+/// Function to classify a single sequence with a single classification
+pub fn classify<'a>(query: &FastaNT, params: &'a SSWSortArgs) -> ClassificationResult<'a> {
+    let FastaNT { name, sequence } = query;
+    let sequence = trim_n(sequence);
+
+    if sequence.len() < params.length_minimum {
+        return ClassificationResult::none();
+    }
+
+    let Ok(query_profile) = LocalProfiles::new_with_w512(&sequence, &MATRIX, GAP_OPEN, GAP_EXTEND) else {
+        eprintln!("WARNING: '{id}' was empty or had bad scoring weights.", id = name);
+        return ClassificationResult::none();
+    };
+
+    let taxa = params
+        .references
+        .iter()
+        .filter_map(|reference| calculate_alignment_score(reference, &query_profile));
+
+    let mut valid_chimera_taxa = BTreeSet::new();
+    let hit_threshold = 800;
+
+    let best = if params.detect_chimera {
+        let taxa_iter = taxa.inspect(|&(score, taxon, _)| {
+            if score >= hit_threshold {
+                valid_chimera_taxa.insert(taxon);
+            }
+        });
+
+        let opt = top_with_ties(taxa_iter);
+
+        if valid_chimera_taxa.len() > 1 {
+            let taxa = valid_chimera_taxa.into_iter().collect();
+            return ClassificationResult::Chimeric { taxa };
+        }
+        opt
+    } else {
+        top_with_ties(taxa)
+    };
+    if let Some((best_score, taxa, strand)) = best {
+        ClassificationResult::classify_top(best_score, taxa, strand, params, sequence.len())
+    } else {
+        ClassificationResult::none()
+    }
+}
+
 /// Takes a query and iterates through all references, returning the top two
 /// classifications for the query.
-pub fn classify<'a>(query: &FastaNT, params: &'a SSWSortArgs) -> [ClassificationResult<'a>; 2] {
+pub fn classify_top_two<'a>(query: &FastaNT, params: &'a SSWSortArgs) -> [ClassificationResult<'a>; 2] {
     let FastaNT { name, sequence } = query;
     let sequence = trim_n(sequence);
 
@@ -306,9 +388,10 @@ pub fn classify<'a>(query: &FastaNT, params: &'a SSWSortArgs) -> [Classification
         top_two_with_ties(taxa)
     };
 
-    classify_top_two(top_2, params, sequence.len())
+    classify_top_two_helper(top_2, params, sequence.len())
 }
 
+/// Arguments for the SSWSort CLI
 pub struct SSWSortArgs {
     pub name:               String,
     pub references:         Vec<(FastaNTAnnot, Nucleotides)>,
@@ -319,12 +402,13 @@ pub struct SSWSortArgs {
     pub length_by_annot:    HashMap<String, usize>,
 }
 
+/// For reading config options from `sswsort_res/config.toml`
 #[derive(Deserialize, Debug)]
 pub struct TomlConfig {
-    // Can also place other top-level items in here
     pub classification_module: Vec<ModuleParameters>,
 }
 
+/// Module-specific configuration parameters
 #[derive(Deserialize, Debug, Default)]
 pub struct ModuleParameters {
     pub name:                String,
@@ -461,13 +545,13 @@ mod tests {
             norm_score_minimum:  1.0,
             score_minimum:       100,
             length_minimum:      25,
-            reference_sequences: PathBuf::from("sswsort_res/flu-ABCD90P.fasta"),
+            reference_sequences: PathBuf::from("sswsort_res/flu.fasta"),
             detect_chimera:      true,
         };
         let params = SSWSortArgs::try_from(params).unwrap();
 
         let top_2 = top_two_with_ties(data);
-        let classifications = classify_top_two(top_2, &params, 50);
+        let classifications = classify_top_two_helper(top_2, &params, 50);
 
         assert_eq!(
             classifications[0],
@@ -504,13 +588,13 @@ mod tests {
             norm_score_minimum:  1.0,
             score_minimum:       100,
             length_minimum:      25,
-            reference_sequences: PathBuf::from("sswsort_res/flu-ABCD90P.fasta"),
+            reference_sequences: PathBuf::from("sswsort_res/flu.fasta"),
             detect_chimera:      true,
         };
         let params = SSWSortArgs::try_from(params).unwrap();
 
         let top_2 = top_two_with_ties(data);
-        let classifications = classify_top_two(top_2, &params, 50);
+        let classifications = classify_top_two_helper(top_2, &params, 50);
 
         assert_eq!(
             classifications[0],

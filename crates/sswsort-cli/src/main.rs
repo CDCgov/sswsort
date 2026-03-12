@@ -107,7 +107,7 @@ fn main() {
         let iter_results = query_reader
             .skip(offset)
             .step_by(array_size)
-            .map(|query| (classify(&query, &params), query.name, query.sequence.len()));
+            .map(|query| (classify_top_two(&query, &params), query.name, query.sequence.len()));
         write_results(&mut w, iter_results, canonical_module).unwrap_or_die("Could not write to file!");
     } else if args.threads.is_none_or(|n| n.get() > 1) {
         let t = if let Some(n) = args.threads {
@@ -121,12 +121,12 @@ fn main() {
 
         let results: Vec<([ClassificationResult; 2], String, usize)> = query_reader
             .par_bridge()
-            .map(|query| (classify(&query, &params), query.name, query.sequence.len()))
+            .map(|query| (classify_top_two(&query, &params), query.name, query.sequence.len()))
             .collect();
 
         write_results(&mut w, results.into_iter(), canonical_module).unwrap_or_die("Could not write to file!");
     } else {
-        let iter_results = query_reader.map(|query| (classify(&query, &params), query.name, query.sequence.len()));
+        let iter_results = query_reader.map(|query| (classify_top_two(&query, &params), query.name, query.sequence.len()));
         write_results(&mut w, iter_results, canonical_module).unwrap_or_die("Could not write to file!");
     }
 

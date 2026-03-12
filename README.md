@@ -69,6 +69,7 @@ score divided by the length of the query. These parameters have default values
 that can be changed in the `config.toml`.
 
 Classifications fall into the following categories:
+
 - A single taxon: the taxon with the highest score for the provided query
 - `*Unusually Long` with a single taxon: this occurs when the query length is
   over twice the length of the reference it is matched to
