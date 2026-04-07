@@ -2,7 +2,12 @@ use clap::Parser;
 use rayon::{ThreadPoolBuilder, iter::ParallelBridge, prelude::ParallelIterator};
 use sswsort::*;
 use std::{io::Write, num::NonZero, path::PathBuf};
-use zoe::{data::fasta::FastaSeq, define_whichever, prelude::*};
+use zoe::{
+    data::fasta::{FastaNT, FastaSeq},
+    define_whichever,
+    iter_utils::ProcessResultsExt,
+    prelude::*,
+};
 
 mod app;
 use app::*;
@@ -61,11 +66,10 @@ fn main() {
 
     let query_reader = FastaReader::from_filename(&args.fasta_file)
         .unwrap_or_die("Cannot open FASTA file!")
-        .filter_map(Result::ok)
-        .map(FastaSeq::filter_to_dna);
+        .map(|res| res.map(FastaSeq::filter_to_dna));
 
-    let params = get_sswsort_module_args(&args.module).unwrap_or_die("Failed to load module data!");
-    let canonical_module = params.name.as_str();
+    let module = get_sswsort_module(&args.module).unwrap_or_die("Failed to load module data!");
+    let canonical_module = module.name.as_str();
 
     if let Some(n) = args.submit_grid_job
         && let Some(output) = args.output_file
@@ -77,7 +81,7 @@ fn main() {
     time_stamp(
         &format!(
             "Doing sort on '{query}' with module '{canonical_module}'.",
-            query = args.fasta_file.file_name().unwrap().to_string_lossy(),
+            query = args.fasta_file.file_name().unwrap_or(args.fasta_file.as_os_str()).display(),
         ),
         use_stderr,
     );
@@ -98,39 +102,54 @@ fn main() {
         AnyOutput::Stdout(std::io::stdout())
     });
 
-    if let Some(g) = grid {
-        // 0-based skip so we start on our parition
-        let offset = (g.task_id - g.task_first) / g.task_stepsize;
-        // modulus for interleaved partitioning
-        let array_size = (g.task_last - g.task_first + 1).div_ceil(g.task_stepsize);
+    query_reader
+        .process_results(|queries| {
+            if let Some(g) = grid {
+                // 0-based skip so we start on our parition
+                let offset = (g.task_id - g.task_first) / g.task_stepsize;
+                // modulus for interleaved partitioning
+                let array_size = (g.task_last - g.task_first + 1).div_ceil(g.task_stepsize);
 
-        let iter_results = query_reader
-            .skip(offset)
-            .step_by(array_size)
-            .map(|query| (classify_top_two(&query, &params), query.name, query.sequence.len()));
-        write_results(&mut w, iter_results, canonical_module).unwrap_or_die("Could not write to file!");
-    } else if args.threads.is_none_or(|n| n.get() > 1) {
-        let t = if let Some(n) = args.threads {
-            n.get()
-        } else if let Some(v) = std::env::var("IFX_LOCAL_PROCS").ok().and_then(|v| v.parse::<usize>().ok()) {
-            v
-        } else {
-            num_cpus::get_physical()
-        };
-        ThreadPoolBuilder::new().num_threads(t).build_global().unwrap();
+                let iter_results = queries
+                    .skip(offset)
+                    .step_by(array_size)
+                    .map(|query| (classify_top_two_or_none(&module, &query), query.name, query.sequence.len()));
 
-        let results: Vec<([ClassificationResult; 2], String, usize)> = query_reader
-            .par_bridge()
-            .map(|query| (classify_top_two(&query, &params), query.name, query.sequence.len()))
-            .collect();
+                write_results(&mut w, iter_results, canonical_module).unwrap_or_die("Could not write to file!");
+            } else if args.threads.is_none_or(|n| n.get() > 1) {
+                let t = if let Some(n) = args.threads {
+                    n.get()
+                } else if let Some(v) = std::env::var("IFX_LOCAL_PROCS").ok().and_then(|v| v.parse::<usize>().ok()) {
+                    v
+                } else {
+                    num_cpus::get_physical()
+                };
+                ThreadPoolBuilder::new().num_threads(t).build_global().unwrap();
 
-        write_results(&mut w, results.into_iter(), canonical_module).unwrap_or_die("Could not write to file!");
-    } else {
-        let iter_results = query_reader.map(|query| (classify_top_two(&query, &params), query.name, query.sequence.len()));
-        write_results(&mut w, iter_results, canonical_module).unwrap_or_die("Could not write to file!");
-    }
+                let results: Vec<([ClassificationResult; 2], String, usize)> = queries
+                    .par_bridge()
+                    .map(|query| (classify_top_two_or_none(&module, &query), query.name, query.sequence.len()))
+                    .collect();
+
+                write_results(&mut w, results.into_iter(), canonical_module).unwrap_or_die("Could not write to file!");
+            } else {
+                let iter_results =
+                    queries.map(|query| (classify_top_two_or_none(&module, &query), query.name, query.sequence.len()));
+                write_results(&mut w, iter_results, canonical_module).unwrap_or_die("Could not write to file!");
+            }
+        })
+        .unwrap_or_die("Failed to read input file");
 
     w.flush().expect("Flushing failed, there may be missing data");
 
     time_stamp("finished", use_stderr);
+}
+
+/// Performs classification with [`SSWSortModule::classify_top_two`], printing
+/// to `stderr` and returning [`ClassificationResult::none`] in case of error.
+fn classify_top_two_or_none<'a>(module: &'a SSWSortModule, query: &FastaNT) -> [ClassificationResult<'a>; 2] {
+    module.classify_top_two(query).unwrap_or_else(|_| {
+        eprintln!("WARNING: '{name}' was empty or had bad scoring weights.", name = query.name);
+        [ClassificationResult::none(), ClassificationResult::none()]
+    })
 }

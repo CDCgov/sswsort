@@ -5,13 +5,17 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
     fs::read_to_string,
-    io::{Error, ErrorKind},
-    path::PathBuf,
+    io::Error,
+    path::{Path, PathBuf},
 };
-use toml::from_str;
 use zoe::{
-    alignment::{LocalProfiles, ProfileSets},
-    data::{WeightMatrix, fasta::FastaNT, fasta::FastaNTAnnot},
+    alignment::{LocalProfiles, ProfileError, ProfileSets},
+    data::{
+        WeightMatrix,
+        err::ResultWithErrorContext,
+        fasta::{FastaNT, FastaNTAnnot},
+    },
+    iter_utils::ProcessResultsExt,
     prelude::*,
 };
 
@@ -100,11 +104,11 @@ impl<'a> ClassificationResult<'a> {
     /// Takes the top score and taxon (or taxa) for a given query and returns a
     /// [`ClassificationResult`].
     fn classify_top(
-        best_score: u32, taxa: Vec<&'a str>, strand: Strand, params: &'a SSWSortArgs, query_len: usize,
+        best_score: u32, taxa: Vec<&'a str>, strand: Strand, module: &'a SSWSortModule, query_len: usize,
     ) -> ClassificationResult<'a> {
-        if best_score >= params.score_minimum || best_score as f32 / query_len as f32 >= params.norm_score_minimum {
+        if best_score >= module.score_minimum || best_score as f32 / query_len as f32 >= module.norm_score_minimum {
             if let &[taxon] = taxa.as_slice() {
-                if let Some(&max_length) = params.length_by_annot.get(taxon)
+                if let Some(&max_length) = module.length_by_annot.get(taxon)
                     && query_len >= max_length
                 {
                     ClassificationResult::UnusuallyLong {
@@ -129,20 +133,21 @@ impl<'a> ClassificationResult<'a> {
         }
     }
 
-    /// Construct a new [`Unrecognizable`] classification without a score.
+    /// Constructs a new [`Unrecognizable`] classification without a score.
     ///
     /// This is used when an error occurs during alignment, the sequence length
     /// is shorter than `length_minimum`, or there is no applicable
     /// classification data (e.g., for secondary classifications).
     ///
     /// [`Unrecognizable`]: ClassificationResult::Unrecognizable
-    fn none() -> Self {
+    pub fn none() -> Self {
         ClassificationResult::Unrecognizable { best_score: None }
     }
 }
 
 /// Takes a reference and query profile to calculate a Smith Waterman alignment
-/// score.
+/// score. `None` is returned if no alignment is found (or if the alignment
+/// overflows `i32`).
 ///
 /// The `reference` argument should contain a tuple with the original record and
 /// the pre-computed reverse complement.
@@ -158,19 +163,25 @@ fn calculate_alignment_score<'a>(
     match (score_pos, score_neg) {
         (Some(pos), Some(neg)) => {
             if pos >= neg {
-                Some((pos, reference.taxon.as_str(), Strand::Plus))
+                Some((pos, &reference.taxon, Strand::Plus))
             } else {
-                Some((neg, reference.taxon.as_str(), Strand::Minus))
+                Some((neg, &reference.taxon, Strand::Minus))
             }
         }
-        (Some(pos), None) => Some((pos, reference.taxon.as_str(), Strand::Plus)),
-        (None, Some(neg)) => Some((neg, reference.taxon.as_str(), Strand::Minus)),
+        (Some(pos), None) => Some((pos, &reference.taxon, Strand::Plus)),
+        (None, Some(neg)) => Some((neg, &reference.taxon, Strand::Minus)),
         (None, None) => None,
     }
 }
 
 /// Takes an iterator of `(score, taxon, Strand)` and finds the top result,
 /// allowing for ties, and ensuring no repeated taxa.
+///
+/// The taxa are returned in alphabetical order.
+///
+/// `None` is returned if the input iterator is empty. If there is a tie
+/// (multiple returned taxa), then the returned [`Strand`] corresponds to the
+/// first taxon in alphabetical order.
 fn top_with_ties<'a, I>(iter: I) -> Option<(u32, Vec<&'a str>, Strand)>
 where
     I: IntoIterator<Item = (u32, &'a str, Strand)>, {
@@ -282,11 +293,11 @@ where
 ///
 /// If either is `None`, then [`ClassificationResult::none`] is used.
 fn classify_top_two_helper<'a>(
-    top_2: [Option<(u32, Vec<&'a str>, Strand)>; 2], params: &'a SSWSortArgs, query_len: usize,
+    top_2: [Option<(u32, Vec<&'a str>, Strand)>; 2], module: &'a SSWSortModule, query_len: usize,
 ) -> [ClassificationResult<'a>; 2] {
     let mut classified = top_2.map(|info| {
         if let Some((best_score, taxa, strand)) = info {
-            ClassificationResult::classify_top(best_score, taxa, strand, params, query_len)
+            ClassificationResult::classify_top(best_score, taxa, strand, module, query_len)
         } else {
             ClassificationResult::none()
         }
@@ -301,130 +312,176 @@ fn classify_top_two_helper<'a>(
     classified
 }
 
-/// Function to classify a single sequence with a single classification
-pub fn classify<'a>(query: &FastaNT, params: &'a SSWSortArgs) -> ClassificationResult<'a> {
-    let FastaNT { name, sequence } = query;
-    let sequence = trim_n(sequence);
+impl SSWSortModule {
+    /// Returns the top classification for a single sequence.
+    ///
+    /// ## Errors
+    ///
+    /// Any errors when building the alignment profile are propagated.
+    pub fn classify(&self, query: &FastaNT) -> Result<ClassificationResult<'_>, ProfileError> {
+        let FastaNT { sequence, .. } = query;
+        let sequence = trim_n(sequence);
 
-    if sequence.len() < params.length_minimum {
-        return ClassificationResult::none();
+        if sequence.len() < self.length_minimum {
+            return Ok(ClassificationResult::none());
+        }
+
+        let query_profile = LocalProfiles::new_with_w512(&sequence, &MATRIX, GAP_OPEN, GAP_EXTEND)?;
+
+        let taxa = self
+            .references
+            .iter()
+            .filter_map(|reference| calculate_alignment_score(reference, &query_profile));
+
+        let mut valid_chimera_taxa = BTreeSet::new();
+        let hit_threshold = 800;
+
+        let best = if self.detect_chimera {
+            let taxa_iter = taxa.inspect(|&(score, taxon, _)| {
+                if score >= hit_threshold {
+                    valid_chimera_taxa.insert(taxon);
+                }
+            });
+
+            let opt = top_with_ties(taxa_iter);
+
+            if valid_chimera_taxa.len() > 1 {
+                let taxa = valid_chimera_taxa.into_iter().collect();
+                return Ok(ClassificationResult::Chimeric { taxa });
+            }
+            opt
+        } else {
+            top_with_ties(taxa)
+        };
+
+        if let Some((best_score, taxa, strand)) = best {
+            Ok(ClassificationResult::classify_top(
+                best_score,
+                taxa,
+                strand,
+                self,
+                sequence.len(),
+            ))
+        } else {
+            Ok(ClassificationResult::none())
+        }
     }
 
-    let Ok(query_profile) = LocalProfiles::new_with_w512(&sequence, &MATRIX, GAP_OPEN, GAP_EXTEND) else {
-        eprintln!("WARNING: '{id}' was empty or had bad scoring weights.", id = name);
-        return ClassificationResult::none();
-    };
+    /// Returns the top two classifications for a single sequence.
+    ///
+    /// ## Errors
+    ///
+    /// Any errors when building the alignment profile are propagated.
+    pub fn classify_top_two(&self, query: &FastaNT) -> Result<[ClassificationResult<'_>; 2], ProfileError> {
+        let FastaNT { sequence, .. } = query;
+        let sequence = trim_n(sequence);
 
-    let taxa = params
-        .references
-        .iter()
-        .filter_map(|reference| calculate_alignment_score(reference, &query_profile));
-
-    let mut valid_chimera_taxa = BTreeSet::new();
-    let hit_threshold = 800;
-
-    let best = if params.detect_chimera {
-        let taxa_iter = taxa.inspect(|&(score, taxon, _)| {
-            if score >= hit_threshold {
-                valid_chimera_taxa.insert(taxon);
-            }
-        });
-
-        let opt = top_with_ties(taxa_iter);
-
-        if valid_chimera_taxa.len() > 1 {
-            let taxa = valid_chimera_taxa.into_iter().collect();
-            return ClassificationResult::Chimeric { taxa };
+        if sequence.len() < self.length_minimum {
+            return Ok([ClassificationResult::none(), ClassificationResult::none()]);
         }
-        opt
-    } else {
-        top_with_ties(taxa)
-    };
-    if let Some((best_score, taxa, strand)) = best {
-        ClassificationResult::classify_top(best_score, taxa, strand, params, sequence.len())
-    } else {
-        ClassificationResult::none()
+
+        let query_profile = LocalProfiles::new_with_w512(&sequence, &MATRIX, GAP_OPEN, GAP_EXTEND)?;
+
+        let taxa = self
+            .references
+            .iter()
+            .filter_map(|reference| calculate_alignment_score(reference, &query_profile));
+
+        // Does not allocate unless data is pushed
+        let mut valid_chimera_taxa = BTreeSet::new();
+        let hit_threshold = 800;
+
+        let top_2 = if self.detect_chimera {
+            let taxa_iter = taxa.inspect(|&(score, taxon, _)| {
+                if score >= hit_threshold {
+                    valid_chimera_taxa.insert(taxon);
+                }
+            });
+
+            let top_2 = top_two_with_ties(taxa_iter);
+            if valid_chimera_taxa.len() > 1 {
+                let taxa = valid_chimera_taxa.into_iter().collect();
+                return Ok([ClassificationResult::Chimeric { taxa }, ClassificationResult::none()]);
+            }
+            top_2
+        } else {
+            top_two_with_ties(taxa)
+        };
+
+        Ok(classify_top_two_helper(top_2, self, sequence.len()))
     }
 }
 
-/// Takes a query and iterates through all references, returning the top two
-/// classifications for the query.
-pub fn classify_top_two<'a>(query: &FastaNT, params: &'a SSWSortArgs) -> [ClassificationResult<'a>; 2] {
-    let FastaNT { name, sequence } = query;
-    let sequence = trim_n(sequence);
-
-    if sequence.len() < params.length_minimum {
-        return [ClassificationResult::none(), ClassificationResult::none()];
-    }
-
-    let Ok(query_profile) = LocalProfiles::new_with_w512(&sequence, &MATRIX, GAP_OPEN, GAP_EXTEND) else {
-        eprintln!("WARNING: '{id}' was empty or had bad scoring weights.", id = name);
-        return [ClassificationResult::none(), ClassificationResult::none()];
-    };
-
-    let taxa = params
-        .references
-        .iter()
-        .filter_map(|reference| calculate_alignment_score(reference, &query_profile));
-
-    // Does not allocate unless data is pushed
-    let mut valid_chimera_taxa = BTreeSet::new();
-    let hit_threshold = 800;
-
-    let top_2 = if params.detect_chimera {
-        let taxa_iter = taxa.inspect(|&(score, taxon, _)| {
-            if score >= hit_threshold {
-                valid_chimera_taxa.insert(taxon);
-            }
-        });
-
-        let top_2 = top_two_with_ties(taxa_iter);
-        if valid_chimera_taxa.len() > 1 {
-            let taxa = valid_chimera_taxa.into_iter().collect();
-            return [ClassificationResult::Chimeric { taxa }, ClassificationResult::none()];
-        }
-        top_2
-    } else {
-        top_two_with_ties(taxa)
-    };
-
-    classify_top_two_helper(top_2, params, sequence.len())
-}
-
-/// Arguments for the SSWSort CLI
-pub struct SSWSortArgs {
-    pub name:               String,
-    pub references:         Vec<(FastaNTAnnot, Nucleotides)>,
-    pub norm_score_minimum: f32,
-    pub score_minimum:      u32,
-    pub length_minimum:     usize,
-    pub detect_chimera:     bool,
-    pub length_by_annot:    HashMap<String, usize>,
+/// A module containing all information needed for performing classification
+/// with `sswsort`.
+pub struct SSWSortModule {
+    /// The name of the module (e.g., `flu`, `cov`, `spike`, `rsv`).
+    pub name:           String,
+    /// The references along with their reverse complements.
+    references:         Vec<(FastaNTAnnot, Nucleotides)>,
+    /// The minimum normalized score for deciding unrecognizability.
+    norm_score_minimum: f32,
+    /// The minimum absolute score for deciding unrecognizability.
+    score_minimum:      u32,
+    /// The minimum required length for deciding unrecognizability.
+    length_minimum:     usize,
+    /// Whether or not to detect chimeric sequences.
+    detect_chimera:     bool,
+    /// A map from taxa to its maximum reference length.
+    length_by_annot:    HashMap<String, usize>,
 }
 
 /// For reading config options from `sswsort_res/config.toml`
 #[derive(Deserialize, Debug)]
 pub struct TomlConfig {
-    pub classification_module: Vec<ModuleParameters>,
+    classification_module: Vec<ModuleParameters>,
 }
 
-/// Module-specific configuration parameters
+/// Configuration parameters for a module.
+///
+/// This can be parsed from the `config.toml` file (with
+/// [`ModuleParameters::new`]), or it can be constructed manually.
+///
+/// To perform classification using [`ModuleParameters`], first turn it into a
+/// [`SSWSortModule`] (which has all reference sequence loaded into memory) via
+/// [`SSWSortModule::new`].
+///
+/// ## Description of Thresholds
+///
+/// If the query is less than `minimum_length` in length after trimming leading
+/// and trailing `N`s, then [`ClassificationResult::Unrecognizable`] is returned
+/// by classification functions. Or, if the optimal alignment yields a
+/// normalized score less than `norm_score_minimum` _and_ an absolute score less
+/// than `score_minimum`, then [`ClassificationResult::Unrecognizable`] is also
+/// returned.
 #[derive(Deserialize, Debug, Default)]
 pub struct ModuleParameters {
+    /// The name of the module (e.g., `flu`, `cov`, `spike`, `rsv`).
     pub name:                String,
+    /// An optional version for the module to aid in version control.
     pub version:             Option<String>,
+    /// Any alternative names that can be used to refer to the module.
     pub alternative_names:   Vec<String>,
+    /// The minimum normalized score for deciding unrecognizability.
     pub norm_score_minimum:  f32,
+    /// The minimum absolute score for deciding unrecognizability.
     pub score_minimum:       u32,
+    /// The minimum required length for deciding unrecognizability.
     pub length_minimum:      usize,
+    /// A path to the FASTA file of reference sequences.
     pub reference_sequences: PathBuf,
+    /// Whether or not to detect chimeric sequences.
     pub detect_chimera:      bool,
 }
 
-impl TryFrom<ModuleParameters> for SSWSortArgs {
-    type Error = std::io::Error;
-
-    fn try_from(params: ModuleParameters) -> Result<Self, Self::Error> {
+impl SSWSortModule {
+    /// Creates a new [`SSWSortModule`] (with references loaded and ready for
+    /// classification).
+    ///
+    /// ## Errors
+    ///
+    /// Any errors loading the references are propagated.
+    pub fn new(params: ModuleParameters) -> std::io::Result<Self> {
         let ModuleParameters {
             mut name,
             version,
@@ -436,36 +493,33 @@ impl TryFrom<ModuleParameters> for SSWSortArgs {
             detect_chimera,
         } = params;
 
-        let reference_annots = FastaReader::from_filename(reference_sequences)?
-            .filter_map(Result::ok)
-            .map(FastaNTAnnot::try_from)
-            .collect::<Result<Vec<_>, _>>()?;
-
         let length_factor = 2;
         let mut length_by_annot = HashMap::new();
 
         // Create references vector and populate length_by_annot in single pass
-        let references = reference_annots
-            .into_iter()
-            .map(|fa| {
-                let this_len = fa.sequence.len() * length_factor;
-                length_by_annot
-                    .entry(fa.taxon.clone())
-                    .and_modify(|len| *len = max(*len, this_len))
-                    .or_insert(this_len);
+        let references = FastaReader::from_filename(reference_sequences)?
+            .map(|res| res.and_then(FastaNTAnnot::try_from))
+            .process_results(|iter| {
+                iter.map(|fa| {
+                    let this_len = fa.sequence.len() * length_factor;
+                    length_by_annot
+                        .entry(fa.taxon.clone())
+                        .and_modify(|len| *len = max(*len, this_len))
+                        .or_insert(this_len);
 
-                let reference_sequence_revcomp = fa.sequence.to_reverse_complement();
+                    let reference_sequence_revcomp = fa.sequence.to_reverse_complement();
 
-                (fa, reference_sequence_revcomp)
-            })
-            .collect();
+                    (fa, reference_sequence_revcomp)
+                })
+                .collect::<Vec<_>>()
+            })?;
 
         if let Some(v) = version {
             name.push_str(" v");
             name.push_str(&v);
         }
 
-        Ok(SSWSortArgs {
+        Ok(SSWSortModule {
             name,
             references,
             norm_score_minimum,
@@ -477,10 +531,20 @@ impl TryFrom<ModuleParameters> for SSWSortArgs {
     }
 }
 
-pub fn get_sswsort_module_args(preset_module: &str) -> Result<SSWSortArgs, Error> {
+/// A convenience function for loading a module from the TOML file, which is
+/// automatically-located.
+///
+/// The TOML file is searched for in the same directory as the executable, as
+/// well as the grandparent directory.
+///
+/// ## Errors
+///
+/// - The path to the executable must be able to be determined
+/// - The TOML file must successfully parse and contain the specified module
+/// - Loading the references must succeed
+pub fn get_sswsort_module(preset_module: &str) -> std::io::Result<SSWSortModule> {
     let suffix = "sswsort_res/config.toml";
-    let preset_module = preset_module.to_ascii_lowercase();
-    let mut exe_path: PathBuf = std::env::current_exe()?;
+    let mut exe_path = std::env::current_exe().with_context("Failed to find the path to the executable")?;
     exe_path.pop();
 
     // Check same directory
@@ -492,35 +556,52 @@ pub fn get_sswsort_module_args(preset_module: &str) -> Result<SSWSortArgs, Error
         toml_path = exe_path.join(suffix);
     }
 
-    let raw_toml = read_to_string(toml_path)?;
-    let configs: TomlConfig = from_str(&raw_toml).map_err(|e| std::io::Error::new(ErrorKind::InvalidData, e))?;
+    let params =
+        ModuleParameters::load(&toml_path, preset_module).with_file_context("Failed to parse TOML file", toml_path)?;
 
-    let selected_config = configs
-        .classification_module
-        .into_iter()
-        .find_map(|mut config| {
-            if preset_module == config.name.to_ascii_lowercase()
-                || config
-                    .alternative_names
-                    .iter()
-                    .any(|alt| alt.to_ascii_lowercase() == preset_module)
-            {
-                config.reference_sequences = exe_path.join("sswsort_res/").join(config.reference_sequences);
+    SSWSortModule::new(params)
+}
 
-                #[cfg(debug_assertions)]
-                println!("{config:?}");
+impl ModuleParameters {
+    /// Loads the `preset_module` from the TOML file.
+    ///
+    /// ## Errors
+    ///
+    /// Parsing errors are propogated with type context. If the module is not
+    /// found, an error is also returned with the module name included.
+    pub fn load(toml: impl AsRef<Path>, preset_module: &str) -> Result<Self, Error> {
+        let raw_toml = read_to_string(&toml)?;
 
-                Some(config)
-            } else {
-                None
-            }
-        })
-        .unwrap_or_else(|| panic!("Could not find a configuration for: {preset_module}"));
+        let config = toml::from_str::<TomlConfig>(&raw_toml).with_type_context::<TomlConfig>()?;
 
-    // Update reference sequence with full path from above
-    let params: SSWSortArgs = selected_config.try_into()?;
+        let sswsort_res = toml.as_ref().parent().ok_or(std::io::Error::other(
+            "The TOML path must be contained in a folder containing the reference files",
+        ))?;
 
-    Ok(params)
+        config
+            .classification_module
+            .into_iter()
+            .find_map(|mut config| {
+                if preset_module.eq_ignore_ascii_case(&config.name)
+                    || config
+                        .alternative_names
+                        .iter()
+                        .any(|alt| alt.eq_ignore_ascii_case(preset_module))
+                {
+                    config.reference_sequences = sswsort_res.join(config.reference_sequences);
+
+                    Some(config)
+                } else {
+                    None
+                }
+            })
+            .ok_or_else(|| {
+                std::io::Error::other(format!(
+                    "Could not find a configuration for: {preset_module}",
+                    preset_module = preset_module.to_ascii_lowercase()
+                ))
+            })
+    }
 }
 
 #[cfg(test)]
@@ -548,10 +629,10 @@ mod tests {
             reference_sequences: PathBuf::from("sswsort_res/flu.fasta"),
             detect_chimera:      true,
         };
-        let params = SSWSortArgs::try_from(params).unwrap();
+        let module = SSWSortModule::new(params).unwrap();
 
         let top_2 = top_two_with_ties(data);
-        let classifications = classify_top_two_helper(top_2, &params, 50);
+        let classifications = classify_top_two_helper(top_2, &module, 50);
 
         assert_eq!(
             classifications[0],
@@ -591,10 +672,10 @@ mod tests {
             reference_sequences: PathBuf::from("sswsort_res/flu.fasta"),
             detect_chimera:      true,
         };
-        let params = SSWSortArgs::try_from(params).unwrap();
+        let module = SSWSortModule::new(params).unwrap();
 
         let top_2 = top_two_with_ties(data);
-        let classifications = classify_top_two_helper(top_2, &params, 50);
+        let classifications = classify_top_two_helper(top_2, &module, 50);
 
         assert_eq!(
             classifications[0],
