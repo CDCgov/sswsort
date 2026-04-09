@@ -65,8 +65,8 @@ where
     for (classification, query_name, seq_len) in results {
         write!(writer, "{PROGRAM_VERSION}\t{module_name}\t{query_name}\t")?;
 
-        let mut buff = itoa::Buffer::new();
-        let seq_len = buff.format(seq_len);
+        let mut buff = core::fmt::NumBuffer::new();
+        let seq_len = seq_len.format_into(&mut buff);
 
         write_result(writer, &classification[0], "\t", seq_len)?;
         write!(writer, "\t")?;

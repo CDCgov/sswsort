@@ -9,3 +9,8 @@ resolver = "2"
 zoe = { version = "0.0.26", default-features = false, features = [
     "multiversion",
 ] }
+
+[profile.prod]
+inherits = "release"
+codegen-units = 1
+lto = "fat"

@@ -626,7 +626,7 @@ mod tests {
             norm_score_minimum:  1.0,
             score_minimum:       100,
             length_minimum:      25,
-            reference_sequences: PathBuf::from("sswsort_res/flu.fasta"),
+            reference_sequences: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../sswsort_res/flu.fasta"),
             detect_chimera:      true,
         };
         let module = SSWSortModule::new(params).unwrap();
@@ -669,7 +669,7 @@ mod tests {
             norm_score_minimum:  1.0,
             score_minimum:       100,
             length_minimum:      25,
-            reference_sequences: PathBuf::from("sswsort_res/flu.fasta"),
+            reference_sequences: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../sswsort_res/flu.fasta"),
             detect_chimera:      true,
         };
         let module = SSWSortModule::new(params).unwrap();

@@ -12,7 +12,6 @@ clap = { version = "4", features = ["derive"] }
 rayon = "1"
 num_cpus = "1"
 jiff = "0.2"
-itoa = "1"
 
 
 [profile.release]

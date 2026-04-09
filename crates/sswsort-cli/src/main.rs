@@ -1,3 +1,5 @@
+#![feature(int_format_into)]
+
 use clap::Parser;
 use rayon::{ThreadPoolBuilder, iter::ParallelBridge, prelude::ParallelIterator};
 use sswsort::*;
