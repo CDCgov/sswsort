@@ -1,46 +1,69 @@
-# SSWSORT
+# SSWSORT Changelog
 
-## v2.0.0 (2025.10)
+All notable changes to this project will be documented in this file. The format
+is roughly based on [Keep a Changelog], and this project tries to adheres to
+[Semantic Versioning].
 
-- **Change:**
+## [2.0.0] - 2026-04-13
 
-## v1.6.3 (2024.12)
+### Changed
 
-- **Fix:** Grid engine execution was broken from v1.4+, now it is fixed.
+- Rewrites SSWSort into Rust with a provided binary CLI tool and library. See
+  `Migration.md` for details about updating existing pipelines to use SSWSort2,
+  and for differences with outputs.
 
-## v1.6.2 (2024.08)
+## [1.6.3] 2024-12
 
-- **Change:** RSV compound types renamed to match the conventions of other tooling, e.g., RSVA becomes RSV_AD.
+### Fixed
 
-## v1.6.1 (2024.05)
+- Grid engine execution was broken from v1.4+, now it is fixed.
 
-- **Feature:** adds configurable working directories with `IFX_WORK_DIR`.
+## [1.6.2] 2024-08
 
-## v1.6 (2024.04)
+### Changed
 
-- **Feature:** adds a RSV module. Many thanks to C. Paden and M. Mandal!
+- RSV compound types renamed to match the conventions of other tooling, e.g., RSVA becomes RSV_AD.
 
-## v1.5 (2022.09)
+## [1.6.1] 2024-05
+
+### Added
+
+- adds configurable working directories with `IFX_WORK_DIR`.
+
+## [1.6.0] 2024-04
+
+### Added
+
+- adds an RSV module. Many thanks to C. Paden and M. Mandal!
+
+## [1.5.0] 2022-09
 
 - **Fix:** Flu reference data reduced and refined for public access.
 - **Change:** chimera annotation list now sorts by annotation name.
 
-## v1.4 (2022.07)
+## [1.4.0] 2022-07
 
 - Removed git dependency, re-licensed, cleaned and formatted, better error output.
 
-## v1.3 (2020.11)
+## [1.3.0] 2020-11
 
 - Added support for SC2 (thanks to K. Lacek and G. Stott). Upgrade GNU Parallel and SSW.
 
-## v1.2 (2019.01)
+## [1.2.0] 2019-01
 
 - Re-factored to make more self-contained
 
-## v1.1 (2018.08)
+## [1.1.0] 2018-08
 
 - Cleaned up output and added fields such as program version.
 
-## v1.0 (2018.08)
+## [1.0.0] 2018-08
 
 - Initial release after alternatives testing. Smith-Waterman gave the most sensitive results for this purose.
+
+<!-- Versions -->
+[2.0.0]: https://github.com/CDCgov/sswsort/compare/
+
+<!-- Links -->
+[keep a changelog]: https://keepachangelog.com/en/1.0.0/
+[semantic versioning]: https://semver.org/spec/v2.0.0.html

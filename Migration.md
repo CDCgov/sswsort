@@ -1,19 +1,34 @@
 # Migration Guide
 
-This guide describes differences in behavior between SSWSORT 1 and 2.
+This guide describes differences in behavior between SSWSort 1 and 2. Notably, SSWSort is now released as a Rust library, which can be used as a dependency in other projects, as well as a command-line tool, meant to replace the original SSWSort. This guide discusses usage for the command-line executable binary provided.
 
 ## Installation
 
 Previously it was sufficient to clone the repository to launch the process. Now there are two options:
 
-1. Download the package from the CDCGOV [releases] section and install it.
-2. Clone the package as before and run the build script. Please note that you might have a recent nightly version of Rust.
+1. Download the SSWSort-CLI binary package from the CDCGOV [releases] section and install it.
 
 ## Usage
 
 New flags `--threads` (`-T`) for multi-threaded mode, `--submit-grid-job` (`-S`)
 for blocking a grid engine job of specified array size, and `--is-grid-task`
 (`-G`) for detecting array size and submitting have been added.
+
+### Example input
+
+To run SSWSort2, arguments are provided in the format:
+
+```bash
+sswsort-cli <MODULE> <FASTA_FILE> [OUTPUT_FILE]
+```
+
+For a demo, and to the classifier reference set against itself, run:
+
+```bash
+sswsort-cli flu sswsort_res/flu.fasta out.tsv
+```
+
+which will classify all references and output primary and secondary classification information to `out.tsv`. If no output path is provided, the results will print to `STDOUT`.
 
 ## Output
 
@@ -33,5 +48,7 @@ for blocking a grid engine job of specified array size, and `--is-grid-task`
 - When in STDOUT mode, logging is redirected to STDERR
 
 ## Configuration
+
+- For configuration, a module still needs to provided. The main module options are `flu`, `cov`, `spike` (for SARS-CoV-2 spike protein), and `rsv`; each of these has aliases provided in `sswsort_res/config.toml`.
 
 [releases]: https://github.com/CDCgov/sswsort

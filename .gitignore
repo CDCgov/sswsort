@@ -6,7 +6,6 @@ test-cov-*.txt
 .nfs*
 debug/
 target/
-Cargo.lock
 .vscode/perl-lang
 /*.txt
 /*.fasta

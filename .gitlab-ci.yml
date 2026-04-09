@@ -26,7 +26,7 @@ sswsort-test:
   dependencies:
     - sswsort-build
   script:
-    - perl .github/scripts/check_versions_changelog.perl
+    - perl .github/scripts/check_versions_changelog.pl
     - cargo test --workspace
     - cargo doc --workspace --no-deps --document-private-items
   artifacts:

@@ -1,4 +1,6 @@
-# SSWSORT - simple virus gene segment / genome classification via Striped Smith-Waterman
+# SSWSort 2 - simple virus gene segment / genome classification via Striped Smith-Waterman
+
+SSWSort 2 is provided as both a Rust library, which can be used as a dependency in other projects, and as an executable binary, which can be run via command-line and replaces SSWSORT. The following documentation discusses usage and outputs for the binary, `sswsort-cli`. For information on the library, read the [Rust docs].
 
 Classifies (or sorts) sequences (influenza, SARS-CoV-2, RSV) using presets or
 DBs and a query sequence (FASTA). The classification is a best match criterion,
