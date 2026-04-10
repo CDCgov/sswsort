@@ -1,3 +1,5 @@
+***As a first step, this document is under governance review. When the review completes as appropriate per local and agency processes, the project team will be allowed to remove this notice. This material is draft.***
+
 # SSWSort 2 - simple virus gene segment / genome classification via striped Smith-Waterman
 
 SSWSort 2 is provided as both a Rust library, which can be used as a dependency
@@ -12,8 +14,6 @@ and ignores same-strand repeats. SSWSORT will reject sequences that are
 unexpectedly long, chimeric (optional), and beyond the scoring thresholds.
 
 ## Usage
-
-Usage:
 
 ```bash
 Uses striped Smith-Waterman to classify sequences into a simple compound type
@@ -33,7 +33,7 @@ Options:
   -V, --version                 Print version
 ```
 
-Self-tests:
+### Self-tests
 
 ```bash
 ./sswsort flu sswsort_res/flu.fasta
