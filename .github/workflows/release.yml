@@ -11,6 +11,7 @@ permissions: {}
 env:
   CARGO_TERM_COLOR: always
   RELEASE_BIN: sswsort
+  RELEASE_CRATE: sswsort-cli
   REGISTRY: ghcr.io
 
 jobs:
@@ -19,8 +20,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -73,7 +72,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ github.repository }}
           tags: |
             type=raw,value=${{ github.ref_name }}-${{ matrix.arch }}
-            type=raw,value=latest-${{ matrix.arch }}
+            type=raw,value=latest-${{ matrix.arch }},enable=${{ github.ref_name != 'test' }}
 
       - name: Build and push Docker image
         id: buildpush
@@ -90,13 +89,17 @@ jobs:
           IMAGE_TAG=$(echo "${{ steps.meta.outputs.tags }}" | grep -- '-${{ matrix.arch }}$' | head -n 1)
           docker create --name temp-container $IMAGE_TAG \
           && docker cp temp-container:/app/sswsort ./sswsort \
-          && docker rm temp-container \
-          && tar -czf ${{ env.RELEASE_BIN }}-linux-${{ matrix.arch }}-${{ github.ref_name }}.tar.gz sswsort
+          && docker rm temp-container
+
+          BUNDLE_DIR="${{ env.RELEASE_CRATE }}-${{ github.ref_name }}"
+          mkdir -p "$BUNDLE_DIR"
+          mv sswsort LICENSE README.md sswsort_res "$BUNDLE_DIR/"
+          tar -czf ${{ env.RELEASE_CRATE }}-linux-${{ matrix.arch }}-${{ github.ref_name }}.tar.gz "$BUNDLE_DIR"
 
       - name: Upload Linux Release Asset
         shell: bash
         run: |
-          gh release upload "${{ github.ref_name }}" ${{ env.RELEASE_BIN }}-linux-${{ matrix.arch }}-${{ github.ref_name }}.tar.gz
+          gh release upload "${{ github.ref_name }}" ${{ env.RELEASE_CRATE }}-linux-${{ matrix.arch }}-${{ github.ref_name }}.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -127,10 +130,12 @@ jobs:
             --amend "${VERSION}-aarch64"
           docker manifest push "$VERSION"
 
-          docker manifest create "$LATEST" \
-            --amend "${LATEST}-x86_64" \
-            --amend "${LATEST}-aarch64"
-          docker manifest push "$LATEST"
+          if [[ "${{ github.ref_name }}" != "test" ]]; then
+            docker manifest create "$LATEST" \
+              --amend "${LATEST}-x86_64" \
+              --amend "${LATEST}-aarch64"
+            docker manifest push "$LATEST"
+          fi
 
   build-mac-artifacts:
     name: Build Mac Artifacts
@@ -151,63 +156,23 @@ jobs:
       - name: Build
         shell: bash
         run: |
-          cargo build -p ${{ env.RELEASE_BIN }} --profile prod --target aarch64-apple-darwin
-          cargo build -p ${{ env.RELEASE_BIN }} --profile prod --target x86_64-apple-darwin
+          cargo build -p ${{ env.RELEASE_CRATE }} --profile prod --target aarch64-apple-darwin
+          cargo build -p ${{ env.RELEASE_CRATE }} --profile prod --target x86_64-apple-darwin
 
       - name: Package Binary
         shell: bash
         run: |
-          lipo -create -output ${{ env.RELEASE_BIN }} \
+          BUNDLE_DIR="${{ env.RELEASE_CRATE }}-${{ github.ref_name }}"
+          mkdir -p "$BUNDLE_DIR"
+          lipo -create -output "$BUNDLE_DIR/${{ env.RELEASE_BIN }}" \
             target/aarch64-apple-darwin/prod/${{ env.RELEASE_BIN }} \
             target/x86_64-apple-darwin/prod/${{ env.RELEASE_BIN }}
-          tar -czf ${{ env.RELEASE_BIN }}-apple-universal-${{ github.ref_name }}.tar.gz ${{ env.RELEASE_BIN }}
+          mv LICENSE README.md sswsort_res "$BUNDLE_DIR/"
+          tar -czf ${{ env.RELEASE_CRATE }}-apple-universal-${{ github.ref_name }}.tar.gz "$BUNDLE_DIR"
 
       - name: Upload Release Asset
         shell: bash
         run: |
-          gh release upload "${{ github.ref_name }}" ${{ env.RELEASE_BIN }}-apple-universal-${{ github.ref_name }}.*
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  create-integrated-package:
-    name: Create Integrated Package
-    needs:
-      - build-mac-artifacts
-      - build-release-image-and-rhel8-artifacts
-    runs-on: macos-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download Release Assets
-        shell: bash
-        run: |
-          gh release download "${{ github.ref_name }}" -p "${{ env.RELEASE_BIN }}-*.tar.gz"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract Binaries and Create Integrated Package
-        shell: bash
-        run: |
-          bin="${{ env.RELEASE_BIN }}"
-          tag="${{ github.ref_name }}"
-
-          tar -xzf "${bin}-apple-universal-${tag}.tar.gz"
-          mv "${bin}" "${bin}_Darwin"
-
-          tar -xzf "${bin}-linux-x86_64-${tag}.tar.gz"
-          mv "${bin}" "${bin}_Linux_x86_64"
-
-          tar -xzf "${bin}-linux-aarch64-${tag}.tar.gz"
-          mv "${bin}" "${bin}_Linux_aarch64"
-
-          rm -f *.tar.gz
-          zip "${bin}-integrated-${tag}.zip" "${bin}_Darwin" "${bin}_Linux_x86_64" "${bin}_Linux_aarch64"
-
-      - name: Upload Integrated Package
-        shell: bash
-        run: |
-          gh release upload "${{ github.ref_name }}" ${{ env.RELEASE_BIN }}-integrated-${{ github.ref_name }}.zip
+          gh release upload "${{ github.ref_name }}" ${{ env.RELEASE_CRATE }}-apple-universal-${{ github.ref_name }}.*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

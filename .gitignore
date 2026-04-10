@@ -11,3 +11,4 @@ target/
 /*.fasta
 /*.fa
 test_*
+/sswsort

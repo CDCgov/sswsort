@@ -17,7 +17,7 @@ use app::*;
 #[derive(Debug, Parser)]
 #[command(author, version, about, long_about = None)]
 #[command(propagate_version = true)]
-/// Uses Smith-Waterman to classify sequences into a simple compound type.
+/// Uses striped Smith-Waterman to classify sequences into a simple compound type.
 pub struct ClassifierArgs {
     // Positional arguments
     /// Name of the classification module
@@ -31,19 +31,22 @@ pub struct ClassifierArgs {
     /// filename of `sswsort_output.tsv`
     output_file: Option<PathBuf>,
 
-    /// Run in simultaneous multi-threaded mode.
+    /// Number of threads to use. Defaults to number of physical cores
+    /// otherwise.
     #[arg(short = 'T', long)]
     threads: Option<NonZero<usize>>,
 
-    /// Automatically detect the array size and task id and write out the data
+    /// Execute as a partitioned task in a grid job, for use with: --submit-grid-job
+    ///
+    /// Detects the array size + task id and write out the data
     /// to a file at the prefixed location for downstream collation.
     ///
     /// An `output_file` is required and will be used with a partition suffix.
     #[arg(short = 'G', long, requires = "output_file", conflicts_with_all = ["threads", "submit_grid_job"])]
     is_grid_task: bool,
 
-    /// Submits and blocks on a grid engine job of the specified array size.
-    #[arg(short='S', long, conflicts_with_all = ["threads", "is_grid_task"])]
+    /// Submits and blocks on a grid job of the specified array size.
+    #[arg(short='S', long, value_name = "SIZE", conflicts_with_all = ["threads", "is_grid_task"])]
     submit_grid_job: Option<usize>,
 }
 

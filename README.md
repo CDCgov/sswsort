@@ -1,6 +1,10 @@
-# SSWSort 2 - simple virus gene segment / genome classification via Striped Smith-Waterman
+# SSWSort 2 - simple virus gene segment / genome classification via striped Smith-Waterman
 
-SSWSort 2 is provided as both a Rust library, which can be used as a dependency in other projects, and as an executable binary, which can be run via command-line and replaces SSWSORT. The following documentation discusses usage and outputs for the binary, `sswsort-cli`. For information on the library, read the [Rust docs].
+SSWSort 2 is provided as both a Rust library, which can be used as a dependency
+in other projects, and as an executable binary, which can be run via
+command-line and replaces SSWSORT. The following documentation discusses usage
+and outputs for the binary, `sswsort`. For information on the library, read
+the [Rust docs].
 
 Classifies (or sorts) sequences (influenza, SARS-CoV-2, RSV) using presets or
 DBs and a query sequence (FASTA). The classification is a best match criterion,
@@ -12,48 +16,58 @@ unexpectedly long, chimeric (optional), and beyond the scoring thresholds.
 Usage:
 
 ```bash
-Uses Smith-Waterman to classify sequences into a simple compound type
+Uses striped Smith-Waterman to classify sequences into a simple compound type
 
 Usage: sswsort [OPTIONS] <MODULE> <FASTA_FILE> [OUTPUT_FILE]
 
 Arguments:
-  <MODULE>
-        Name of the classification module
-
-  <FASTA_FILE>
-        Name of the nucleotide sequences to classify in FASTA format
-
-  [OUTPUT_FILE]
-        Name of the tab-separated-value file for classifier results. If none
-        are provided, STDOUT is used. If a directory is specified, a default
-        filename of `sswsort_output.tsv` is used.
+  <MODULE>       Name of the classification module
+  <FASTA_FILE>   Name of the nucleotide sequences to classify in FASTA format
+  [OUTPUT_FILE]  Name of the tab-separated-value file for classifier results. If none are provided, STDOUT is used. If a directory is specified, a default filename of `sswsort_output.tsv`
 
 Options:
-  -T, --threads <THREADS>
-        Run in simultaneous multi-threaded mode
-
-  -G, --is-grid-task
-        Automatically detect the array size and task id and write out the data
-        to a file at the prefixed location for downstream collation.
-        
-        An `output_file` is required and will be used with a partition suffix.
-
-  -S, --submit-grid-job <SUBMIT_GRID_JOB>
-        Submits and blocks on a grid engine job of the specified array size
-
-  -h, --help
-        Print help (see a summary with '-h')
-
-  -V, --version
-        Print version
+  -T, --threads <THREADS>       Number of threads to use. Defaults to number of physical cores otherwise
+  -G, --is-grid-task            Execute as a partitioned task in a grid job, for use with: --submit-grid-job
+  -S, --submit-grid-job <SIZE>  Submits and blocks on a grid job of the specified array size
+  -h, --help                    Print help (see more with '--help')
+  -V, --version                 Print version
 ```
 
 Self-tests:
 
 ```bash
-./sswsort flu sswsort_res/flu-ABCD90P.fasta --threads
-./sswsort cov-beta sswsort_res/cov-beta.fasta --threads
-./sswsort rsv sswsort_res/rsv.fasta --threads
+./sswsort flu sswsort_res/flu.fasta
+./sswsort cov-beta sswsort_res/cov-beta.fasta
+./sswsort rsv sswsort_res/rsv.fasta
+```
+
+## Installation
+
+### Compile from source
+
+Clone this repo and, optionally, check out the latest release tag. You must
+install [Rust](https://rust-lang.org) *nightly* as a pre-requisite. You can then
+simply run the installer script:
+
+```bash
+./install.sh
+```
+
+### Via Archive
+
+1. Download the latest archive via our [releases page](https://github.com/CDCgov/sswsort/releases)
+   for your target platform.
+2. Unzip the archive containing `sswsort`.
+3. Move the package to your desired location and add the folder to your `PATH`
+   - Note: `sswsort_res` and `sswsort` must be in the same folder.
+
+### Via Container
+
+Simply run:
+
+```bash
+## From Github Container Repo
+docker run --rm -itv $(pwd):/data ghcr.io/cdcgov/sswsort:latest sswsort # more args
 ```
 
 ## Outputs
@@ -72,30 +86,27 @@ that can be changed in the `config.toml`.
 
 Classifications fall into the following categories:
 
-- A single taxon: the taxon with the highest score for the provided query
-- `*Unusually Long` with a single taxon: this occurs when the query length is
-  over twice the length of the reference it is matched to
-- `*Chimeric` with a `+`- separated list of taxa: the query matches to multiple
-  different reference taxa with scores above 800 each. Chimera detection can be
-  disabled in `config.toml`
-- `*Unresolvable` with a `,`- separated list of taxa: the query matches to
-  multiple reference taxa with exactly matching scores
-- `UNRECOGNIZABLE`: the query did not match to any reference with a high enough
-  score or normalized score to pass the threshold. Queries with `*Chimeric` or
-  `*Unresolvable` primary classifications are also given `UNRECOGNIZABLE` for
-  their secondary classification
+| Classification                                    | Description                                                                                                                                                                                                                                         |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A single taxon                                    | The taxon with the highest score for the provided query                                                                                                                                                                                             |
+| `*Unusually Long` with a single taxon             | The query length is over twice the length of the reference it is matched to                                                                                                                                                                         |
+| `*Chimeric` with a `+`-separated list of taxa     | The query matches to multiple different reference taxa with scores above 800 each. Chimera detection can be disabled in `config.toml`                                                                                                               |
+| `*Unresolvable` with a `,`-separated list of taxa | The query matches to multiple reference taxa with exactly matching scores                                                                                                                                                                           |
+| `UNRECOGNIZABLE`                                  | The query did not match to any reference with a high enough score or normalized score to pass the threshold. Queries with `*Chimeric` or `*Unresolvable` primary classifications are also given `UNRECOGNIZABLE` for their secondary classification |
 
 ## Alignment and Scoring
 
 SSWSORT utilizes a Striped Smith-Waterman alignment algorithm to align each
 query sequence to a list of references before classifying the query with the reference taxa that had the highest alignment score. The alignment uses the following weights for scoring:
 
-- Match: 2
-- Mismatch: -5
-- Gap open: -10
-- Gap extend: -5
+| Parameter  | Weight |
+| ---------- | ------ |
+| Match      | 2      |
+| Mismatch   | -5     |
+| Gap open   | -10    |
+| Gap extend | -5     |
 
-`N` Nucleotides and unrecognized characters are treated as 0-penalty mismatches.
+Ambiguous nucleotides (`N`) and unrecognized characters are treated as 0-penalty mismatches.
 So, a query with one or more `N` bases will align with an identical score as a
 query with those bases missing.
 

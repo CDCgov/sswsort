@@ -1,16 +1,16 @@
 [[classification_module]]
 name = "flu"
-version = "8"
-alternative_names = ["flu-v7", "flu-v8", "flu2"]
+version = "2.0"
+alternative_names = []
 norm_score_minimum = 1.0
 score_minimum = 100
 length_minimum = 25
 reference_sequences = "flu.fasta"
 detect_chimera = true
 
-
 [[classification_module]]
 name = "cov"
+version = "1.0"
 alternative_names = ["cov-beta", "covid", "sc2"]
 norm_score_minimum = 1.0
 score_minimum = 100
@@ -20,6 +20,7 @@ detect_chimera = true
 
 [[classification_module]]
 name = "spike"
+version = "1.0"
 alternative_names = ["sc2-spike", "spike-sc2"]
 norm_score_minimum = 0.7
 score_minimum = 60
@@ -29,6 +30,7 @@ detect_chimera = true
 
 [[classification_module]]
 name = "rsv"
+version = "1.0"
 alternative_names = []
 norm_score_minimum = 1.0
 score_minimum = 100

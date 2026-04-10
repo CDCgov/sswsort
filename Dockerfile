@@ -24,8 +24,7 @@ ARG sswsort_branch
 
 COPY . .
 
-RUN latest=$(git tag | tail -n1) \
-    && git checkout ${sswsort_branch:-$latest} \
+RUN if [ -n "$sswsort_branch" ]; then git checkout "$sswsort_branch"; fi \
     && cargo build --workspace --profile prod \
     && cargo test --workspace
 
@@ -40,9 +39,8 @@ RUN apt-get update --allow-releaseinfo-change --fix-missing \
     && rm -rf /var/lib/{apt,dpkg,cache,log}/
 
 WORKDIR /app
-COPY  --from=builder /sswsort/docs /app/docs
-COPY   --from=builder \
-    /sswsort/target/prod/sswsort-cli \
+COPY --from=builder \
+    /sswsort/target/prod/sswsort \
     /sswsort/Cargo.toml \
     /sswsort/Cargo.lock \
     /sswsort/LICENSE \
@@ -51,6 +49,7 @@ COPY   --from=builder \
     /sswsort/CONTRIBUTORS.md \
     /sswsort/README.md \
     /app/
+COPY --from=builder /sswsort/sswsort_res /app/sswsort_res
 
 ENV PATH="/app:${PATH}"
 WORKDIR /data

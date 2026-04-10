@@ -10,7 +10,7 @@ Previously it was sufficient to clone the repository to launch the process. Now 
 
 ## Usage
 
-New flags `--threads` (`-T`) for multi-threaded mode, `--submit-grid-job` (`-S`)
+New flags `--threads` (`-T`) for setting threads, `--submit-grid-job` (`-S`)
 for blocking a grid engine job of specified array size, and `--is-grid-task`
 (`-G`) for detecting array size and submitting have been added.
 
@@ -19,13 +19,13 @@ for blocking a grid engine job of specified array size, and `--is-grid-task`
 To run SSWSort2, arguments are provided in the format:
 
 ```bash
-sswsort-cli <MODULE> <FASTA_FILE> [OUTPUT_FILE]
+sswsort <MODULE> <FASTA_FILE> [OUTPUT_FILE]
 ```
 
 For a demo, and to the classifier reference set against itself, run:
 
 ```bash
-sswsort-cli flu sswsort_res/flu.fasta out.tsv
+sswsort flu sswsort_res/flu.fasta out.tsv
 ```
 
 which will classify all references and output primary and secondary classification information to `out.tsv`. If no output path is provided, the results will print to `STDOUT`.
@@ -51,4 +51,4 @@ which will classify all references and output primary and secondary classificati
 
 - For configuration, a module still needs to provided. The main module options are `flu`, `cov`, `spike` (for SARS-CoV-2 spike protein), and `rsv`; each of these has aliases provided in `sswsort_res/config.toml`.
 
-[releases]: https://github.com/CDCgov/sswsort
+[releases]: https://github.com/CDCgov/sswsort/releases

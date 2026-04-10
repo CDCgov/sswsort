@@ -440,7 +440,7 @@ pub struct TomlConfig {
 /// Configuration parameters for a module.
 ///
 /// This can be parsed from the `config.toml` file (with
-/// [`ModuleParameters::new`]), or it can be constructed manually.
+/// [`ModuleParameters::load`]), or it can be constructed manually.
 ///
 /// To perform classification using [`ModuleParameters`], first turn it into a
 /// [`SSWSortModule`] (which has all reference sequence loaded into memory) via
