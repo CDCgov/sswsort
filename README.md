@@ -1,5 +1,3 @@
-***As a first step, this document is under governance review. When the review completes as appropriate per local and agency processes, the project team will be allowed to remove this notice. This material is draft.***
-
 # SSWSort 2 - simple virus gene segment / genome classification via striped Smith-Waterman
 
 SSWSort 2 is provided as both a Rust library, which can be used as a dependency
