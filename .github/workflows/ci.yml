@@ -8,7 +8,9 @@ on:
     types: [assigned, opened, synchronize, reopened]
     branches:
       - main
-      - sswsort2
+
+permissions:
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -18,7 +20,7 @@ jobs:
     name: SSWSort Build & Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Check changelog/version consistency
         run: RELEASE_PKG=sswsort-cli perl .github/scripts/check_versions_changelog.pl
