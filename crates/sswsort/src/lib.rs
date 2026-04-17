@@ -9,7 +9,7 @@ use std::{
     path::{Path, PathBuf},
 };
 use zoe::{
-    alignment::{LocalProfiles, ProfileError, ProfileSets},
+    alignment::{LocalProfiles, ProfileSets},
     data::{
         WeightMatrix,
         err::ResultWithErrorContext,
@@ -25,6 +25,14 @@ const GAP_EXTEND: i8 = -1;
 const MISMATCH: i8 = -5;
 const MATCH: i8 = 2;
 const MATRIX: WeightMatrix<i8, 5> = WeightMatrix::new_dna_matrix(MATCH, MISMATCH, Some(b'N'));
+
+// Requirements for successful profile creation
+const _: () = {
+    // TODO: Replace with range.contains when that becomes const
+    assert!(-127 <= GAP_OPEN && GAP_OPEN <= 0);
+    assert!(-127 <= GAP_EXTEND && GAP_EXTEND <= 0);
+    assert!(GAP_EXTEND >= GAP_OPEN);
+};
 
 /// The strand of the reference to which the query best aligned.
 #[derive(Hash, Eq, PartialEq, Clone, Copy, Debug)]
@@ -313,15 +321,19 @@ impl SSWSortModule {
     /// ## Errors
     ///
     /// Any errors when building the alignment profile are propagated.
-    pub fn classify(&self, query: &FastaNT) -> Result<ClassificationResult<'_>, ProfileError> {
+    pub fn classify(&self, query: &FastaNT) -> ClassificationResult<'_> {
         let FastaNT { sequence, .. } = query;
         let sequence = trim_n(sequence);
 
-        if sequence.len() < self.length_minimum {
-            return Ok(ClassificationResult::none());
+        if sequence.len() < self.length_minimum || sequence.is_empty() {
+            return ClassificationResult::none();
         }
 
-        let query_profile = LocalProfiles::new_with_w512(&sequence, &MATRIX, GAP_OPEN, GAP_EXTEND)?;
+        // Validity: Profile creation will be successful because sequence is
+        // non-empty and alignment parameters are pre-defined constants
+        // satisfying the requirements
+        let query_profile = LocalProfiles::new_with_w512(&sequence, &MATRIX, GAP_OPEN, GAP_EXTEND)
+            .expect("The profile could not be created");
 
         let taxa = self
             .references
@@ -342,7 +354,7 @@ impl SSWSortModule {
 
             if valid_chimera_taxa.len() > 1 {
                 let taxa = valid_chimera_taxa.into_iter().collect();
-                return Ok(ClassificationResult::Chimeric { taxa });
+                return ClassificationResult::Chimeric { taxa };
             }
             opt
         } else {
@@ -350,15 +362,9 @@ impl SSWSortModule {
         };
 
         if let Some((best_score, taxa, strand)) = best {
-            Ok(ClassificationResult::classify_top(
-                best_score,
-                taxa,
-                strand,
-                self,
-                sequence.len(),
-            ))
+            ClassificationResult::classify_top(best_score, taxa, strand, self, sequence.len())
         } else {
-            Ok(ClassificationResult::none())
+            ClassificationResult::none()
         }
     }
 
@@ -367,15 +373,19 @@ impl SSWSortModule {
     /// ## Errors
     ///
     /// Any errors when building the alignment profile are propagated.
-    pub fn classify_top_two(&self, query: &FastaNT) -> Result<[ClassificationResult<'_>; 2], ProfileError> {
+    pub fn classify_top_two(&self, query: &FastaNT) -> [ClassificationResult<'_>; 2] {
         let FastaNT { sequence, .. } = query;
         let sequence = trim_n(sequence);
 
-        if sequence.len() < self.length_minimum {
-            return Ok([ClassificationResult::none(), ClassificationResult::none()]);
+        if sequence.len() < self.length_minimum || sequence.is_empty() {
+            return [ClassificationResult::none(), ClassificationResult::none()];
         }
 
-        let query_profile = LocalProfiles::new_with_w512(&sequence, &MATRIX, GAP_OPEN, GAP_EXTEND)?;
+        // Validity: Profile creation will be successful because sequence is
+        // non-empty and alignment parameters are pre-defined constants
+        // satisfying the requirements
+        let query_profile = LocalProfiles::new_with_w512(&sequence, &MATRIX, GAP_OPEN, GAP_EXTEND)
+            .expect("The profile could not be created");
 
         let taxa = self
             .references
@@ -396,14 +406,14 @@ impl SSWSortModule {
             let top_2 = top_two_with_ties(taxa_iter);
             if valid_chimera_taxa.len() > 1 {
                 let taxa = valid_chimera_taxa.into_iter().collect();
-                return Ok([ClassificationResult::Chimeric { taxa }, ClassificationResult::none()]);
+                return [ClassificationResult::Chimeric { taxa }, ClassificationResult::none()];
             }
             top_2
         } else {
             top_two_with_ties(taxa)
         };
 
-        Ok(classify_top_two_helper(top_2, self, sequence.len()))
+        classify_top_two_helper(top_2, self, sequence.len())
     }
 }
 
@@ -418,7 +428,8 @@ pub struct SSWSortModule {
     norm_score_minimum: f32,
     /// The minimum absolute score for deciding unrecognizability.
     score_minimum:      u32,
-    /// The minimum required length for deciding unrecognizability.
+    /// The minimum required length for deciding unrecognizability. An empty
+    /// sequence is always considered unrecognizable.
     length_minimum:     usize,
     /// Whether or not to detect chimeric sequences.
     detect_chimera:     bool,
@@ -461,7 +472,8 @@ pub struct ModuleParameters {
     pub norm_score_minimum:  f32,
     /// The minimum absolute score for deciding unrecognizability.
     pub score_minimum:       u32,
-    /// The minimum required length for deciding unrecognizability.
+    /// The minimum required length for deciding unrecognizability. An empty
+    /// sequence is always considered unrecognizable.
     pub length_minimum:      usize,
     /// A path to the FASTA file of reference sequences.
     pub reference_sequences: PathBuf,

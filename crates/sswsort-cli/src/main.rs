@@ -115,10 +115,13 @@ fn main() {
                 // modulus for interleaved partitioning
                 let array_size = (g.task_last - g.task_first + 1).div_ceil(g.task_stepsize);
 
-                let iter_results = queries
-                    .skip(offset)
-                    .step_by(array_size)
-                    .map(|query| (classify_top_two_or_none(&module, &query), query.name, query.sequence.len()));
+                let iter_results = queries.skip(offset).step_by(array_size).map(|query| {
+                    (
+                        classify_top_two_with_warning(&module, &query),
+                        query.name,
+                        query.sequence.len(),
+                    )
+                });
 
                 write_results(&mut w, iter_results, canonical_module).unwrap_or_die("Could not write to file!");
             } else if args.threads.is_none_or(|n| n.get() > 1) {
@@ -133,13 +136,24 @@ fn main() {
 
                 let results: Vec<([ClassificationResult; 2], String, usize)> = queries
                     .par_bridge()
-                    .map(|query| (classify_top_two_or_none(&module, &query), query.name, query.sequence.len()))
+                    .map(|query| {
+                        (
+                            classify_top_two_with_warning(&module, &query),
+                            query.name,
+                            query.sequence.len(),
+                        )
+                    })
                     .collect();
 
                 write_results(&mut w, results.into_iter(), canonical_module).unwrap_or_die("Could not write to file!");
             } else {
-                let iter_results =
-                    queries.map(|query| (classify_top_two_or_none(&module, &query), query.name, query.sequence.len()));
+                let iter_results = queries.map(|query| {
+                    (
+                        classify_top_two_with_warning(&module, &query),
+                        query.name,
+                        query.sequence.len(),
+                    )
+                });
                 write_results(&mut w, iter_results, canonical_module).unwrap_or_die("Could not write to file!");
             }
         })
@@ -151,10 +165,11 @@ fn main() {
 }
 
 /// Performs classification with [`SSWSortModule::classify_top_two`], printing
-/// to `stderr` and returning [`ClassificationResult::none`] in case of error.
-fn classify_top_two_or_none<'a>(module: &'a SSWSortModule, query: &FastaNT) -> [ClassificationResult<'a>; 2] {
-    module.classify_top_two(query).unwrap_or_else(|_| {
-        eprintln!("WARNING: '{name}' was empty or had bad scoring weights.", name = query.name);
-        [ClassificationResult::none(), ClassificationResult::none()]
-    })
+/// to `stderr` in case of empty input.
+fn classify_top_two_with_warning<'a>(module: &'a SSWSortModule, query: &FastaNT) -> [ClassificationResult<'a>; 2] {
+    if query.sequence.is_empty() {
+        eprintln!("WARNING: '{name}' was empty.", name = query.name);
+    }
+
+    module.classify_top_two(query)
 }
