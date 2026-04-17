@@ -24,17 +24,15 @@ where
             strand,
         } => write!(writer, "{taxon}\t{best_score}{t}{seq_len}\t{strand}"),
         ClassificationResult::Unrecognizable { best_score } => {
-            let strand = Strand::Unknown;
             if let Some(best_score) = best_score {
-                write!(writer, "UNRECOGNIZABLE\t{best_score}{t}{seq_len}\t{strand}")
+                write!(writer, "UNRECOGNIZABLE\t{best_score}{t}{seq_len}\t*")
             } else {
-                write!(writer, "UNRECOGNIZABLE\t\\N{t}{seq_len}\t{strand}")
+                write!(writer, "UNRECOGNIZABLE\t\\N{t}{seq_len}\t*")
             }
         }
         ClassificationResult::Chimeric { taxa } => {
             let taxa_list = taxa.join("+");
-            let strand = Strand::Unknown;
-            write!(writer, "*Chimeric: {taxa_list}\t\\N{t}{seq_len}\t{strand}")
+            write!(writer, "*Chimeric: {taxa_list}\t\\N{t}{seq_len}\t*")
         }
         ClassificationResult::UnusuallyLong {
             taxon,
@@ -43,8 +41,7 @@ where
         } => write!(writer, "*Unusually Long: {taxon}\t{best_score}{t}{seq_len}\t{strand}"),
         ClassificationResult::Unresolvable { taxa, best_score } => {
             let taxa_list = taxa.join(",");
-            let strand = Strand::Unknown;
-            write!(writer, "*Unresolvable: {taxa_list}\t{best_score}{t}{seq_len}\t{strand}")
+            write!(writer, "*Unresolvable: {taxa_list}\t{best_score}{t}{seq_len}\t*")
         }
     }
 }

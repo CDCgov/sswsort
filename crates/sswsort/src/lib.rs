@@ -33,9 +33,6 @@ pub enum Strand {
     Plus,
     /// The query aligned to the reverse complement of the reference sequence.
     Minus,
-    /// The strand is not known due to an unrecognizable, unresolvable, or
-    /// chimeric classification.
-    Unknown,
 }
 
 /// Removes repeating `N` residues at the beginning and end of the sequence.
@@ -50,14 +47,12 @@ fn trim_n(sequence: &Nucleotides) -> NucleotidesView<'_> {
 }
 
 impl fmt::Display for Strand {
-    /// Display options for [`Strand`]. Uses "+" or "-" for positive and negative
-    /// strand, and "*" in cases where the [`Strand`] is unknown, such as
-    /// `UNRESOLVABLE`, `UNRECOGNIZABLE`, and `CHIMERIC` classifications.
+    /// Displays the [`Strand`], using "+" and "-" for positive and negative
+    /// strand.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Strand::Plus => write!(f, "+"),
             Strand::Minus => write!(f, "-"),
-            Strand::Unknown => write!(f, "*"),
         }
     }
 }
