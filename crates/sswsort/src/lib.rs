@@ -10,11 +10,7 @@ use std::{
 };
 use zoe::{
     alignment::{LocalProfiles, ProfileSets},
-    data::{
-        WeightMatrix,
-        err::ResultWithErrorContext,
-        fasta::{FastaNT, FastaNTAnnot},
-    },
+    data::{WeightMatrix, err::ResultWithErrorContext, fasta::FastaNTAnnot},
     iter_utils::ProcessResultsExt,
     prelude::*,
 };
@@ -47,7 +43,7 @@ pub enum Strand {
 ///
 /// Since `N` residues are treated as 0-cost mismatches, and local alignment is
 /// being done, this will speed up alignment time without affecting the score.
-fn trim_n(sequence: &Nucleotides) -> NucleotidesView<'_> {
+fn trim_n(sequence: NucleotidesView) -> NucleotidesView {
     let mut iter = sequence.iter();
     let left = iter.by_ref().take_while(|b| **b == b'N').count();
     let right = iter.rev().take_while(|b| **b == b'N').count();
@@ -321,8 +317,8 @@ impl SSWSortModule {
     /// ## Errors
     ///
     /// Any errors when building the alignment profile are propagated.
-    pub fn classify(&self, query: &FastaNT) -> ClassificationResult<'_> {
-        let FastaNT { sequence, .. } = query;
+    pub fn classify(&self, query: impl AsRef<[u8]>) -> ClassificationResult<'_> {
+        let sequence = NucleotidesView::from(query.as_ref());
         let sequence = trim_n(sequence);
 
         if sequence.len() < self.length_minimum || sequence.is_empty() {
@@ -332,8 +328,8 @@ impl SSWSortModule {
         // Validity: Profile creation will be successful because sequence is
         // non-empty and alignment parameters are pre-defined constants
         // satisfying the requirements
-        let query_profile = LocalProfiles::new_with_w512(&sequence, &MATRIX, GAP_OPEN, GAP_EXTEND)
-            .expect("The profile could not be created");
+        let query_profile =
+            LocalProfiles::new_with_w512(sequence, &MATRIX, GAP_OPEN, GAP_EXTEND).expect("The profile could not be created");
 
         let taxa = self
             .references
@@ -373,8 +369,8 @@ impl SSWSortModule {
     /// ## Errors
     ///
     /// Any errors when building the alignment profile are propagated.
-    pub fn classify_top_two(&self, query: &FastaNT) -> [ClassificationResult<'_>; 2] {
-        let FastaNT { sequence, .. } = query;
+    pub fn classify_top_two(&self, sequence: impl AsRef<[u8]>) -> [ClassificationResult<'_>; 2] {
+        let sequence = NucleotidesView::from(sequence.as_ref());
         let sequence = trim_n(sequence);
 
         if sequence.len() < self.length_minimum || sequence.is_empty() {
@@ -384,8 +380,8 @@ impl SSWSortModule {
         // Validity: Profile creation will be successful because sequence is
         // non-empty and alignment parameters are pre-defined constants
         // satisfying the requirements
-        let query_profile = LocalProfiles::new_with_w512(&sequence, &MATRIX, GAP_OPEN, GAP_EXTEND)
-            .expect("The profile could not be created");
+        let query_profile =
+            LocalProfiles::new_with_w512(sequence, &MATRIX, GAP_OPEN, GAP_EXTEND).expect("The profile could not be created");
 
         let taxa = self
             .references

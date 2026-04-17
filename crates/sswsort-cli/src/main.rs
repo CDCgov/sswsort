@@ -171,5 +171,5 @@ fn classify_top_two_with_warning<'a>(module: &'a SSWSortModule, query: &FastaNT)
         eprintln!("WARNING: '{name}' was empty.", name = query.name);
     }
 
-    module.classify_top_two(query)
+    module.classify_top_two(&query.sequence)
 }

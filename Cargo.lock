@@ -483,9 +483,8 @@ checksum = "09dac053f1cd375980747450bfc7250c264eaae0583872e845c0c7cd578872b5"
 
 [[package]]
 name = "zoe"
-version = "0.0.27"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f441f45f63e93f833c590a24e8edb121ae1faefbb5fe085fab59f9eb0126c351"
+version = "0.0.28-dev"
+source = "git+https://github.com/CDCgov/zoe.git#016b16adc8a0ca4faaec78bf2de094acc86d4cc2"
 dependencies = [
  "multiversion",
 ]
