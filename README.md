@@ -102,7 +102,7 @@ query sequence to a list of references before classifying the query with the ref
 | Match      | 2      |
 | Mismatch   | -5     |
 | Gap open   | -10    |
-| Gap extend | -5     |
+| Gap extend | -1     |
 
 Ambiguous nucleotides (`N`) and unrecognized characters are treated as 0-penalty mismatches.
 So, a query with one or more `N` bases will align with an identical score as a
