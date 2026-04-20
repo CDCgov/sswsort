@@ -492,7 +492,7 @@ impl SSWSortModule {
         let mut length_by_annot = HashMap::new();
 
         // Create references vector and populate length_by_annot in single pass
-        let references = FastaReader::from_filename(reference_sequences)?
+        let references = FastaReader::from_path(reference_sequences)?
             .map(|res| res.and_then(FastaNTAnnot::try_from))
             .process_results(|iter| {
                 iter.map(|fa| {
@@ -552,7 +552,7 @@ pub fn get_sswsort_module(preset_module: &str) -> std::io::Result<SSWSortModule>
     }
 
     let params =
-        ModuleParameters::load(&toml_path, preset_module).with_file_context("Failed to parse TOML file", toml_path)?;
+        ModuleParameters::load(&toml_path, preset_module).with_path_context("Failed to parse TOML file", toml_path)?;
 
     SSWSortModule::new(params)
 }

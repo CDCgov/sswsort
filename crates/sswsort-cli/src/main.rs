@@ -69,7 +69,7 @@ fn main() {
     let args = ClassifierArgs::parse();
     let use_stderr = args.output_file.is_none();
 
-    let query_reader = FastaReader::from_filename(&args.fasta_file)
+    let query_reader = FastaReader::from_path(&args.fasta_file)
         .unwrap_or_die("Cannot open FASTA file!")
         .map(|res| res.map(FastaSeq::filter_to_dna));
 

@@ -3,13 +3,13 @@ members = ["crates/sswsort", "crates/sswsort-cli"]
 resolver = "2"
 
 [workspace.package]
-version = "2.0.0"
+version = "2.0.0-dev"
 edition = "2024"
 authors = ["Samuel S. Shepard", "Samuel Wiley", "David Hufnagel"]
 rust-version = "1.96"
 
 [workspace.dependencies]
-zoe = { version = "0.0.26", default-features = false, features = [
+zoe = { version = "0.0.27", default-features = false, features = [
   "multiversion",
 ] }
 

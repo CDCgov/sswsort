@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file. The format
 is roughly based on [Keep a Changelog], and this project tries to adheres to
 [Semantic Versioning].
 
+## [2.1.0] - TBD
+
+### Fixed
+
+- Fixed upstream bug where piped inputs were being read as empty and throwing
+  error
+
+### Changed
+
+- Removed redundant `Strand::Unknown` enum variant in library. This does not
+  change any outputs in the command-line tool
+
 ## [2.0.0] - 2026-04-13
 
 ### Changed
@@ -62,6 +74,7 @@ is roughly based on [Keep a Changelog], and this project tries to adheres to
 - Initial release after alternatives testing. Smith-Waterman gave the most sensitive results for this purose.
 
 <!-- Versions -->
+[2.1.0]: https://github.com/CDCgov/sswsort/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/CDCgov/sswsort/compare/
 
 <!-- Links -->
