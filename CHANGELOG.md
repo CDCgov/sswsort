@@ -10,11 +10,15 @@ is roughly based on [Keep a Changelog], and this project tries to adheres to
 
 - Fixed upstream bug where piped inputs were being read as empty and throwing
   error
+- Fixed SSW scoring weights in README
+- Made classification methods infallible
 
 ### Changed
 
 - Removed redundant `Strand::Unknown` enum variant in library. This does not
   change any outputs in the command-line tool
+- Generalized public API in `lib` to take `AsRef<[u8]>` for classification
+  functions instead of requiring a `FastaNT`
 
 ## [2.0.0] - 2026-04-13
 
