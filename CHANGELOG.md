@@ -19,6 +19,7 @@ is roughly based on [Keep a Changelog], and this project tries to adheres to
   change any outputs in the command-line tool
 - Generalized public API in `lib` to take `AsRef<[u8]>` for classification
   functions instead of requiring a `FastaNT`
+- Dockerfile now uses hardened images (requires login to dhi.io)
 
 ## [2.0.0] - 2026-04-13
 
@@ -79,7 +80,7 @@ is roughly based on [Keep a Changelog], and this project tries to adheres to
 
 <!-- Versions -->
 [2.1.0]: https://github.com/CDCgov/sswsort/compare/v2.0.0...v2.1.0
-[2.0.0]: https://github.com/CDCgov/sswsort/compare/
+[2.0.0]: https://github.com/CDCgov/sswsort/compare/v1.6.3...v2.0.0
 
 <!-- Links -->
 [keep a changelog]: https://keepachangelog.com/en/1.0.0/

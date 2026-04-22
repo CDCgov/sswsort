@@ -28,7 +28,9 @@ RUN if [ -n "$sswsort_branch" ]; then git checkout "$sswsort_branch"; fi \
     && cargo build --workspace --profile prod \
     && cargo test --workspace
 
-FROM debian:bookworm-slim AS base
+FROM dhi.io/debian-base:bookworm AS base
+
+USER 0
 
 ARG APT_MIRROR_NAME=
 RUN if [ -n "$APT_MIRROR_NAME" ]; then sed -i.bak -E '/security/! s^https?://.+?/(debian|ubuntu)^http://'"$APT_MIRROR_NAME"'/\1^' /etc/apt/sources.list && grep '^deb' /etc/apt/sources.list; fi
@@ -50,6 +52,8 @@ COPY --from=builder \
     /sswsort/README.md \
     /app/
 COPY --from=builder /sswsort/sswsort_res /app/sswsort_res
+
+USER nonroot
 
 ENV PATH="/app:${PATH}"
 WORKDIR /data
