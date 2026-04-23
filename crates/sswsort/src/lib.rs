@@ -5,7 +5,6 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
     fs::read_to_string,
-    io::Error,
     path::{Path, PathBuf},
 };
 use zoe::{
@@ -460,6 +459,18 @@ impl TomlConfig {
 
         Ok(toml)
     }
+
+    /// Looks up a module by name (or alternative name). `None` is returned if
+    /// no module had the given name.
+    pub fn get(&self, module_name: &str) -> Option<&ModuleParameters> {
+        self.classification_module.iter().find(|config| {
+            module_name.eq_ignore_ascii_case(&config.name)
+                || config
+                    .alternative_names
+                    .iter()
+                    .any(|alt| alt.eq_ignore_ascii_case(module_name))
+        })
+    }
 }
 
 /// Configuration parameters for a module.
@@ -507,9 +518,9 @@ impl SSWSortModule {
     /// ## Errors
     ///
     /// Any errors loading the references are propagated.
-    pub fn new(params: ModuleParameters) -> std::io::Result<Self> {
+    pub fn new(params: &ModuleParameters) -> std::io::Result<Self> {
         let ModuleParameters {
-            mut name,
+            name,
             version,
             alternative_names: _,
             norm_score_minimum,
@@ -518,6 +529,8 @@ impl SSWSortModule {
             reference_sequences,
             detect_chimera,
         } = params;
+
+        let mut name = name.clone();
 
         let length_factor = 2;
         let mut length_by_annot = HashMap::new();
@@ -542,16 +555,16 @@ impl SSWSortModule {
 
         if let Some(v) = version {
             name.push_str(" v");
-            name.push_str(&v);
+            name.push_str(v);
         }
 
         Ok(SSWSortModule {
             name,
             references,
-            norm_score_minimum,
-            score_minimum,
-            length_minimum,
-            detect_chimera,
+            norm_score_minimum: *norm_score_minimum,
+            score_minimum: *score_minimum,
+            length_minimum: *length_minimum,
+            detect_chimera: *detect_chimera,
             length_by_annot,
         })
     }
@@ -567,6 +580,7 @@ impl SSWSortModule {
 ///
 /// - The path to the executable must be able to be determined
 /// - The TOML file must successfully parse and contain the specified module
+///   (the error includes the requested module as context)
 /// - Loading the references must succeed
 pub fn get_sswsort_module(preset_module: &str) -> std::io::Result<SSWSortModule> {
     let suffix = "sswsort_res/config.toml";
@@ -582,45 +596,13 @@ pub fn get_sswsort_module(preset_module: &str) -> std::io::Result<SSWSortModule>
         toml_path = exe_path.join(suffix);
     }
 
-    let params =
-        ModuleParameters::load(&toml_path, preset_module).with_path_context("Failed to parse TOML file", toml_path)?;
+    let config = TomlConfig::from_path(&toml_path).with_path_context("Failed to parse TOML file", toml_path)?;
+
+    let params = config.get(preset_module).ok_or(std::io::Error::other(format!(
+        "The requested module {preset_module} was not found"
+    )))?;
 
     SSWSortModule::new(params)
-}
-
-impl ModuleParameters {
-    /// Loads the `preset_module` from the TOML file.
-    ///
-    /// ## Errors
-    ///
-    /// Parsing errors are propogated with type context. If the module is not
-    /// found, an error is also returned with the module name included. Path
-    /// context is not included.
-    pub fn load(toml: impl AsRef<Path>, preset_module: &str) -> Result<Self, Error> {
-        let config = TomlConfig::from_path(&toml)?;
-
-        config
-            .classification_module
-            .into_iter()
-            .find_map(|config| {
-                if preset_module.eq_ignore_ascii_case(&config.name)
-                    || config
-                        .alternative_names
-                        .iter()
-                        .any(|alt| alt.eq_ignore_ascii_case(preset_module))
-                {
-                    Some(config)
-                } else {
-                    None
-                }
-            })
-            .ok_or_else(|| {
-                std::io::Error::other(format!(
-                    "Could not find a configuration for: {preset_module}",
-                    preset_module = preset_module.to_ascii_lowercase()
-                ))
-            })
-    }
 }
 
 #[cfg(test)]
@@ -648,7 +630,7 @@ mod tests {
             reference_sequences: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../sswsort_res/flu.fasta"),
             detect_chimera:      true,
         };
-        let module = SSWSortModule::new(params).unwrap();
+        let module = SSWSortModule::new(&params).unwrap();
 
         let top_2 = top_two_with_ties(data);
         let classifications = classify_top_two_helper(top_2, &module, 50);
@@ -691,7 +673,7 @@ mod tests {
             reference_sequences: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../sswsort_res/flu.fasta"),
             detect_chimera:      true,
         };
-        let module = SSWSortModule::new(params).unwrap();
+        let module = SSWSortModule::new(&params).unwrap();
 
         let top_2 = top_two_with_ties(data);
         let classifications = classify_top_two_helper(top_2, &module, 50);
