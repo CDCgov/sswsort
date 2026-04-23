@@ -475,8 +475,8 @@ impl TomlConfig {
 
 /// Configuration parameters for a module.
 ///
-/// This can be parsed from the `config.toml` file (with
-/// [`ModuleParameters::load`]), or it can be constructed manually.
+/// This can be accessed from [`TomlConfig`] with [`get`], or it can be
+/// constructed manually.
 ///
 /// To perform classification using [`ModuleParameters`], first turn it into a
 /// [`SSWSortModule`] (which has all reference sequence loaded into memory) via
@@ -490,6 +490,8 @@ impl TomlConfig {
 /// normalized score less than `norm_score_minimum` _and_ an absolute score less
 /// than `score_minimum`, then [`ClassificationResult::Unrecognizable`] is also
 /// returned.
+///
+/// [`get`]: TomlConfig::get
 #[derive(Deserialize, Debug, Default)]
 pub struct ModuleParameters {
     /// The name of the module (e.g., `flu`, `cov`, `spike`, `rsv`).

@@ -6,6 +6,11 @@ is roughly based on [Keep a Changelog], and this project tries to adheres to
 
 ## [2.1.0] - TBD
 
+### Added 
+
+- Added a constructor for `TomlConfig`, as well as a method `get` to attempt to
+  fetch a set of module parameters by name
+
 ### Fixed
 
 - Fixed upstream bug where piped inputs were being read as empty and throwing
@@ -20,6 +25,11 @@ is roughly based on [Keep a Changelog], and this project tries to adheres to
 - Generalized public API in `lib` to take `AsRef<[u8]>` for classification
   functions instead of requiring a `FastaNT`
 - Dockerfile now uses hardened images (requires login to dhi.io)
+
+## Removed
+
+- Removed `ModuleParameters::load` in favor of accessing the module from the
+  `TomlConfig` with `get`
 
 ## [2.0.0] - 2026-04-13
 
