@@ -439,6 +439,18 @@ pub struct TomlConfig {
     classification_module: Vec<ModuleParameters>,
 }
 
+impl TomlConfig {
+    /// Parses a [`TomlConfig`] from a path.
+    ///
+    /// ## Errors
+    ///
+    /// IO errors and parsing errors are propagated without path context.
+    pub fn from_path(path: impl AsRef<Path>) -> std::io::Result<Self> {
+        let raw_toml = read_to_string(&path)?;
+        Ok(toml::from_str::<TomlConfig>(&raw_toml).with_type_context::<TomlConfig>()?)
+    }
+}
+
 /// Configuration parameters for a module.
 ///
 /// This can be parsed from the `config.toml` file (with
@@ -573,9 +585,7 @@ impl ModuleParameters {
     /// Parsing errors are propogated with type context. If the module is not
     /// found, an error is also returned with the module name included.
     pub fn load(toml: impl AsRef<Path>, preset_module: &str) -> Result<Self, Error> {
-        let raw_toml = read_to_string(&toml)?;
-
-        let config = toml::from_str::<TomlConfig>(&raw_toml).with_type_context::<TomlConfig>()?;
+        let config = TomlConfig::from_path(&toml).with_path_context("Failed to read the TOML from file", &toml)?;
 
         let sswsort_res = toml.as_ref().parent().ok_or(std::io::Error::other(
             "The TOML path must be contained in a folder containing the reference files",
