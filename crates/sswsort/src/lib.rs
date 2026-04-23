@@ -446,8 +446,19 @@ impl TomlConfig {
     ///
     /// IO errors and parsing errors are propagated without path context.
     pub fn from_path(path: impl AsRef<Path>) -> std::io::Result<Self> {
+        let sswsort_res = path.as_ref().parent().ok_or(std::io::Error::other(
+            "The TOML path must be contained in a folder containing the reference files",
+        ))?;
+
         let raw_toml = read_to_string(&path)?;
-        Ok(toml::from_str::<TomlConfig>(&raw_toml).with_type_context::<TomlConfig>()?)
+        let mut toml = toml::from_str::<TomlConfig>(&raw_toml).with_type_context::<TomlConfig>()?;
+
+        // Convert relative paths to absolute paths
+        for module in &mut toml.classification_module {
+            module.reference_sequences = sswsort_res.join(&module.reference_sequences);
+        }
+
+        Ok(toml)
     }
 }
 
@@ -483,7 +494,7 @@ pub struct ModuleParameters {
     /// The minimum required length for deciding unrecognizability. An empty
     /// sequence is always considered unrecognizable.
     pub length_minimum:      usize,
-    /// A path to the FASTA file of reference sequences.
+    /// The absolute path to the FASTA file of reference sequences.
     pub reference_sequences: PathBuf,
     /// Whether or not to detect chimeric sequences.
     pub detect_chimera:      bool,
@@ -583,26 +594,21 @@ impl ModuleParameters {
     /// ## Errors
     ///
     /// Parsing errors are propogated with type context. If the module is not
-    /// found, an error is also returned with the module name included.
+    /// found, an error is also returned with the module name included. Path
+    /// context is not included.
     pub fn load(toml: impl AsRef<Path>, preset_module: &str) -> Result<Self, Error> {
-        let config = TomlConfig::from_path(&toml).with_path_context("Failed to read the TOML from file", &toml)?;
-
-        let sswsort_res = toml.as_ref().parent().ok_or(std::io::Error::other(
-            "The TOML path must be contained in a folder containing the reference files",
-        ))?;
+        let config = TomlConfig::from_path(&toml)?;
 
         config
             .classification_module
             .into_iter()
-            .find_map(|mut config| {
+            .find_map(|config| {
                 if preset_module.eq_ignore_ascii_case(&config.name)
                     || config
                         .alternative_names
                         .iter()
                         .any(|alt| alt.eq_ignore_ascii_case(preset_module))
                 {
-                    config.reference_sequences = sswsort_res.join(config.reference_sequences);
-
                     Some(config)
                 } else {
                     None
