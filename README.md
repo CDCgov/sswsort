@@ -95,7 +95,9 @@ Classifications fall into the following categories:
 ## Alignment and Scoring
 
 SSWSORT utilizes a Striped Smith-Waterman alignment algorithm to align each
-query sequence to a list of references before classifying the query with the reference taxa that had the highest alignment score. The alignment uses the following weights for scoring:
+query sequence to a list of references before classifying the query with the
+reference taxa that had the highest alignment score. The alignment uses these
+default following weights for scoring:
 
 | Parameter  | Weight |
 | ---------- | ------ |
@@ -103,6 +105,23 @@ query sequence to a list of references before classifying the query with the ref
 | Mismatch   | -5     |
 | Gap open   | -10    |
 | Gap extend | -1     |
+
+Defaults can be overridden at a module level within the `config.toml`. 
+
+Example:
+
+```toml
+[[classification_module]]
+name = "flu"
+version = "2.0"
+alternative_names = []
+norm_score_minimum = 1.0
+score_minimum = 100
+length_minimum = 25
+reference_sequences = "flu.fasta"
+detect_chimera = true
+weights = { gap_open = -11, gap_extend = -2, mismatch = -3, match_weight = 1 }
+```
 
 Ambiguous nucleotides (`N`) and unrecognized characters are treated as 0-penalty mismatches.
 So, a query with one or more `N` bases will align with an identical score as a

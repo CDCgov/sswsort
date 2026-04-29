@@ -31,6 +31,11 @@ is roughly based on [Keep a Changelog], and this project tries to adheres to
 - Removed `ModuleParameters::load` in favor of accessing the module from the
   `TomlConfig` with `get`
 
+### Added
+
+- Added ability to override default SSW scoring weights at a module level in the
+  `config.toml`
+
 ## [2.0.0] - 2026-04-13
 
 ### Changed

@@ -1,10 +1,12 @@
 use foldhash::{HashMap, HashMapExt};
+use serde::{Deserialize, Deserializer, de};
 use serde_derive::Deserialize;
 use std::{
     cmp::max,
     collections::{BTreeMap, BTreeSet},
     fmt,
     fs::read_to_string,
+    io::Error as IOError,
     path::{Path, PathBuf},
 };
 use zoe::{
@@ -14,19 +16,20 @@ use zoe::{
     prelude::*,
 };
 
-// Weights are fixed presently
-const GAP_OPEN: i8 = -10;
-const GAP_EXTEND: i8 = -1;
-const MISMATCH: i8 = -5;
-const MATCH: i8 = 2;
-const MATRIX: WeightMatrix<i8, 5> = WeightMatrix::new_dna_matrix(MATCH, MISMATCH, Some(b'N'));
+// Default weights if not specified in TOML
+const WEIGHTS: Weights = Weights {
+    gap_open:     -10,
+    gap_extend:   -1,
+    mismatch:     -5,
+    match_weight: 2,
+};
 
 // Requirements for successful profile creation
 const _: () = {
     // TODO: Replace with range.contains when that becomes const
-    assert!(-127 <= GAP_OPEN && GAP_OPEN <= 0);
-    assert!(-127 <= GAP_EXTEND && GAP_EXTEND <= 0);
-    assert!(GAP_EXTEND >= GAP_OPEN);
+    assert!(-127 <= WEIGHTS.gap_open && WEIGHTS.gap_open <= 0);
+    assert!(-127 <= WEIGHTS.gap_extend && WEIGHTS.gap_extend <= 0);
+    assert!(WEIGHTS.gap_extend >= WEIGHTS.gap_open);
 };
 
 /// The strand of the reference to which the query best aligned.
@@ -327,8 +330,13 @@ impl SSWSortModule {
         // Validity: Profile creation will be successful because sequence is
         // non-empty and alignment parameters are pre-defined constants
         // satisfying the requirements
-        let query_profile =
-            LocalProfiles::new_with_w512(sequence, &MATRIX, GAP_OPEN, GAP_EXTEND).expect("The profile could not be created");
+        let query_profile = LocalProfiles::new_with_w512(
+            sequence,
+            &self.weights_and_matrix.matrix,
+            self.weights_and_matrix.weights.gap_open,
+            self.weights_and_matrix.weights.gap_extend,
+        )
+        .expect("The profile could not be created");
 
         let taxa = self
             .references
@@ -379,8 +387,13 @@ impl SSWSortModule {
         // Validity: Profile creation will be successful because sequence is
         // non-empty and alignment parameters are pre-defined constants
         // satisfying the requirements
-        let query_profile =
-            LocalProfiles::new_with_w512(sequence, &MATRIX, GAP_OPEN, GAP_EXTEND).expect("The profile could not be created");
+        let query_profile = LocalProfiles::new_with_w512(
+            sequence,
+            &self.weights_and_matrix.matrix,
+            self.weights_and_matrix.weights.gap_open,
+            self.weights_and_matrix.weights.gap_extend,
+        )
+        .expect("The profile could not be created");
 
         let taxa = self
             .references
@@ -430,6 +443,8 @@ pub struct SSWSortModule {
     detect_chimera:     bool,
     /// A map from taxa to its maximum reference length.
     length_by_annot:    HashMap<String, usize>,
+    /// Weights and matrix for SSW scoring
+    weights_and_matrix: WeightsAndMatrix,
 }
 
 /// For reading config options from `sswsort_res/config.toml`
@@ -511,6 +526,82 @@ pub struct ModuleParameters {
     pub reference_sequences: PathBuf,
     /// Whether or not to detect chimeric sequences.
     pub detect_chimera:      bool,
+    /// Scoring weights for SSW scoring
+    #[serde(default)]
+    pub weights:             Weights,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct Weights {
+    gap_open:     i8,
+    gap_extend:   i8,
+    mismatch:     i8,
+    match_weight: i8,
+}
+
+impl Weights {
+    /// Creates a new set of validated SSW scoring weights.
+    ///
+    /// ## Errors
+    ///
+    /// Returns an [`std::io::Error`] error if `gap_open` or
+    /// `gap_extend` is outside Zoe's supported `[-127, 0]` range, or if
+    /// `gap_extend` is less than `gap_open`.
+    pub fn new(gap_open: i8, gap_extend: i8, mismatch: i8, match_weight: i8) -> std::io::Result<Self> {
+        if !(-127..=0).contains(&gap_open) {
+            return Err(IOError::other("gap_open must be in [-127, 0]"));
+        }
+
+        if !(-127..=0).contains(&gap_extend) {
+            return Err(IOError::other("gap_extend must be in [-127, 0]"));
+        }
+
+        if gap_extend < gap_open {
+            return Err(IOError::other("gap_extend must be >= gap_open"));
+        }
+
+        Ok(Weights {
+            gap_open,
+            gap_extend,
+            mismatch,
+            match_weight,
+        })
+    }
+}
+
+impl Default for Weights {
+    fn default() -> Self {
+        WEIGHTS
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct RawWeights {
+    gap_open:     i8,
+    gap_extend:   i8,
+    mismatch:     i8,
+    match_weight: i8,
+}
+
+impl<'de> Deserialize<'de> for Weights {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>, {
+        let RawWeights {
+            gap_open,
+            gap_extend,
+            mismatch,
+            match_weight,
+        } = RawWeights::deserialize(deserializer)?;
+
+        Weights::new(gap_open, gap_extend, mismatch, match_weight).map_err(de::Error::custom)
+    }
+}
+
+#[derive(Debug)]
+pub struct WeightsAndMatrix {
+    pub weights: Weights,
+    pub matrix:  WeightMatrix<'static, i8, 5>,
 }
 
 impl SSWSortModule {
@@ -530,6 +621,7 @@ impl SSWSortModule {
             length_minimum,
             reference_sequences,
             detect_chimera,
+            weights,
         } = params;
 
         let mut name = name.clone();
@@ -560,6 +652,11 @@ impl SSWSortModule {
             name.push_str(v);
         }
 
+        let weights_and_matrix = WeightsAndMatrix {
+            weights: *weights,
+            matrix:  WeightMatrix::new_dna_matrix(weights.match_weight, weights.mismatch, Some(b'N')),
+        };
+
         Ok(SSWSortModule {
             name,
             references,
@@ -568,6 +665,7 @@ impl SSWSortModule {
             length_minimum: *length_minimum,
             detect_chimera: *detect_chimera,
             length_by_annot,
+            weights_and_matrix,
         })
     }
 }
@@ -631,6 +729,7 @@ mod tests {
             length_minimum:      25,
             reference_sequences: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../sswsort_res/flu.fasta"),
             detect_chimera:      true,
+            weights:             WEIGHTS,
         };
         let module = SSWSortModule::new(&params).unwrap();
 
@@ -674,6 +773,7 @@ mod tests {
             length_minimum:      25,
             reference_sequences: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../sswsort_res/flu.fasta"),
             detect_chimera:      true,
+            weights:             WEIGHTS,
         };
         let module = SSWSortModule::new(&params).unwrap();
 
