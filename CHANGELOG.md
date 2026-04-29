@@ -4,12 +4,14 @@ All notable changes to this project will be documented in this file. The format
 is roughly based on [Keep a Changelog], and this project tries to adheres to
 [Semantic Versioning].
 
-## [2.1.0] - TBD
+## [2.1.0] - 2026-04-29
 
 ### Added 
 
 - Added a constructor for `TomlConfig`, as well as a method `get` to attempt to
   fetch a set of module parameters by name
+- Added ability to override default SSW scoring weights at a module level in the
+  `config.toml`
 
 ### Fixed
 
@@ -26,15 +28,10 @@ is roughly based on [Keep a Changelog], and this project tries to adheres to
   functions instead of requiring a `FastaNT`
 - Dockerfile now uses hardened images (requires login to dhi.io)
 
-## Removed
+### Removed
 
 - Removed `ModuleParameters::load` in favor of accessing the module from the
   `TomlConfig` with `get`
-
-### Added
-
-- Added ability to override default SSW scoring weights at a module level in the
-  `config.toml`
 
 ## [2.0.0] - 2026-04-13
 
@@ -96,6 +93,8 @@ is roughly based on [Keep a Changelog], and this project tries to adheres to
 <!-- Versions -->
 [2.1.0]: https://github.com/CDCgov/sswsort/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/CDCgov/sswsort/compare/v1.6.3...v2.0.0
+[1.6.3]: https://github.com/CDCgov/sswsort/compare/v1.6.2...v1.6.3
+[1.6.2]: https://github.com/CDCgov/sswsort/compare/v1.6.1...v1.6.2
 
 <!-- Links -->
 [keep a changelog]: https://keepachangelog.com/en/1.0.0/

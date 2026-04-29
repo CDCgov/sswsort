@@ -122,6 +122,8 @@ reference_sequences = "flu.fasta"
 detect_chimera = true
 weights = { gap_open = -11, gap_extend = -2, mismatch = -3, match_weight = 1 }
 ```
+will override the values for all weights. Note if some but not all weights are
+being overridden, the other values still need to be included in the `toml`.
 
 Ambiguous nucleotides (`N`) and unrecognized characters are treated as 0-penalty mismatches.
 So, a query with one or more `N` bases will align with an identical score as a
