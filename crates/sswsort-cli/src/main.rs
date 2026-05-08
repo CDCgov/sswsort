@@ -1,9 +1,13 @@
-#![feature(int_format_into)]
+#![feature(int_format_into, try_trait_v2)]
 
 use clap::Parser;
 use rayon::{ThreadPoolBuilder, iter::ParallelBridge, prelude::ParallelIterator};
 use sswsort::*;
-use std::{io::Write, num::NonZero, path::PathBuf};
+use std::{
+    io::{Error, Read, Write},
+    num::NonZero,
+    path::PathBuf,
+};
 use zoe::{
     data::fasta::{FastaNT, FastaSeq},
     define_whichever,
@@ -11,25 +15,38 @@ use zoe::{
     prelude::*,
 };
 
-mod app;
-use app::*;
+pub(crate) mod grid;
+pub(crate) mod input;
+pub(crate) mod write;
+
+pub(crate) use grid::*;
+pub(crate) use input::*;
+pub(crate) use write::*;
 
 #[derive(Debug, Parser)]
 #[command(author, version, about, long_about = None)]
 #[command(propagate_version = true)]
 /// Uses striped Smith-Waterman to classify sequences into a simple compound type.
-pub struct ClassifierArgs {
+struct ClassifierArgs {
     // Positional arguments
     /// Name of the classification module
-    module:     String,
-    /// Name of the nucleotide sequences to classify in FASTA format.
-    fasta_file: PathBuf,
+    module: String,
+
+    /// Path to nucleotide sequences to classify in either FASTA or `.tsv`
+    /// format. If `.tsv` format is being used, the `--input-is-tsv` boolean
+    /// flag must also be used
+    input: PathBuf,
 
     // Optional arguments
     /// Name of the tab-separated-value file for classifier results. If none are
     /// provided, STDOUT is used. If a directory is specified, a default
     /// filename of `sswsort_output.tsv`
     output_file: Option<PathBuf>,
+
+    /// Boolean flag for if the input provided is in TSV format instead of FASTA
+    /// format.
+    #[arg(long)]
+    input_is_tsv: bool,
 
     /// Number of threads to use. Defaults to number of physical cores
     /// otherwise.
@@ -65,13 +82,26 @@ define_whichever! {
     impl Write for AnyOutput {}
 }
 
+define_whichever! {
+    enum QueryReader<IR: Read> {
+        Fasta(FastaReader<IR>),
+        Tsv(TsvReader<IR>)
+    }
+
+    impl<IR: Read> Iterator for QueryReader<IR> {
+        type Item = Result<FastaSeq, Error>;
+    }
+}
+
 fn main() {
     let args = ClassifierArgs::parse();
     let use_stderr = args.output_file.is_none();
 
-    let query_reader = FastaReader::from_path(&args.fasta_file)
-        .unwrap_or_die("Cannot open FASTA file!")
-        .map(|res| res.map(FastaSeq::filter_to_dna));
+    let query_reader = if !&args.input_is_tsv {
+        QueryReader::Fasta(FastaReader::from_path(&args.input).unwrap_or_die("Cannot open FASTA input!"))
+    } else {
+        QueryReader::Tsv(TsvReader::from_path(&args.input).unwrap_or_die("Cannot open TSV input!"))
+    };
 
     let module = get_sswsort_module(&args.module).unwrap_or_die("Failed to load module data!");
     let canonical_module = module.name.as_str();
@@ -79,14 +109,14 @@ fn main() {
     if let Some(n) = args.submit_grid_job
         && let Some(output) = args.output_file
     {
-        submit_job_sync(n, canonical_module, &args.fasta_file, output).unwrap_or_die("Qsub job submission failed!");
+        submit_job_sync(n, canonical_module, &args.input, output).unwrap_or_die("Qsub job submission failed!");
         return;
     }
 
     time_stamp(
         &format!(
             "Doing sort on '{query}' with module '{canonical_module}'.",
-            query = args.fasta_file.file_name().unwrap_or(args.fasta_file.as_os_str()).display(),
+            query = args.input.file_name().unwrap_or(args.input.as_os_str()).display(),
         ),
         use_stderr,
     );
@@ -108,6 +138,7 @@ fn main() {
     });
 
     query_reader
+        .map(|res| res.map(FastaSeq::filter_to_dna))
         .process_results(|queries| {
             if let Some(g) = grid {
                 // 0-based skip so we start on our parition

@@ -16,14 +16,15 @@ unexpectedly long, chimeric (optional), and beyond the scoring thresholds.
 ```bash
 Uses striped Smith-Waterman to classify sequences into a simple compound type
 
-Usage: sswsort [OPTIONS] <MODULE> <FASTA_FILE> [OUTPUT_FILE]
+Usage: sswsort [OPTIONS] <MODULE> <INPUT> [OUTPUT_FILE]
 
 Arguments:
   <MODULE>       Name of the classification module
-  <FASTA_FILE>   Name of the nucleotide sequences to classify in FASTA format
+  <INPUT>        Path to nucleotide sequences to classify in either FASTA or `.tsv` format. If `.tsv` format is being used, the `--input-is-tsv` boolean flag must also be used
   [OUTPUT_FILE]  Name of the tab-separated-value file for classifier results. If none are provided, STDOUT is used. If a directory is specified, a default filename of `sswsort_output.tsv`
 
 Options:
+      --input-is-tsv               Boolean flag for if the input provided is in TSV format instead of FASTA format
   -T, --threads <THREADS>       Number of threads to use. Defaults to number of physical cores otherwise
   -G, --is-grid-task            Execute as a partitioned task in a grid job, for use with: --submit-grid-job
   -S, --submit-grid-job <SIZE>  Submits and blocks on a grid job of the specified array size
@@ -67,6 +68,22 @@ Simply run:
 ## From Github Container Repo
 docker run --rm -itv $(pwd):/data ghcr.io/cdcgov/sswsort:latest sswsort # more args
 ```
+
+## Inputs
+
+SSWSORT expects input via a path to data in either FASTA format or TSV. Data may
+also be piped directly into the program. If using a TSV input, the
+`--input-is-tsv` boolean flag must also be used.
+
+Example:
+
+```bash
+sswsort flu flu_samples.tsv --input-is-tsv
+```
+
+The TSV format should have the name/id of the read in the first column, followed
+by the sequence in the second column. Additional columns are allowed but
+ignored. 
 
 ## Outputs
 

@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file. The format
 is roughly based on [Keep a Changelog], and this project tries to adheres to
 [Semantic Versioning].
 
+## [2.2.0] - TBD
+
+### Added
+
+- Added option for reading TSV input instead of FASTA, with boolean flag
+  `--input-is-tsv`
+
 ## [2.1.0] - 2026-04-29
 
 ### Added 
@@ -91,6 +98,7 @@ is roughly based on [Keep a Changelog], and this project tries to adheres to
 - Initial release after alternatives testing. Smith-Waterman gave the most sensitive results for this purose.
 
 <!-- Versions -->
+[2.2.0]: https://github.com/CDCgov/sswsort/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/CDCgov/sswsort/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/CDCgov/sswsort/compare/v1.6.3...v2.0.0
 [1.6.3]: https://github.com/CDCgov/sswsort/compare/v1.6.2...v1.6.3
