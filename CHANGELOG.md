@@ -4,12 +4,17 @@ All notable changes to this project will be documented in this file. The format
 is roughly based on [Keep a Changelog], and this project tries to adheres to
 [Semantic Versioning].
 
-## [2.2.0] - TBD
+## [2.2.0] - 2026-05-13
 
 ### Added
 
 - Added option for reading TSV input instead of FASTA, with boolean flag
   `--input-is-tsv`
+
+### Fixed
+
+- Fixed bug where timestamp was printing in `UTC+0` time zone rather than in the
+  system's current time zone
 
 ## [2.1.0] - 2026-04-29
 

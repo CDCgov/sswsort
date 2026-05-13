@@ -1,4 +1,4 @@
-use jiff::Timestamp;
+use jiff::Zoned;
 use sswsort::*;
 
 // If we later want to match the shell script, we can use:
@@ -84,12 +84,12 @@ pub(crate) fn time_stamp(message: &str, use_stderr: bool) {
     if use_stderr {
         eprintln!(
             "[{now}] {pad}SSWSORT :: {message}",
-            now = Timestamp::now().strftime("%Y-%m-%d %k:%M:%S")
+            now = Zoned::now().strftime("%Y-%m-%d %k:%M:%S")
         );
     } else {
         println!(
             "[{now}] {pad}SSWSORT :: {message}",
-            now = Timestamp::now().strftime("%Y-%m-%d %k:%M:%S")
+            now = Zoned::now().strftime("%Y-%m-%d %k:%M:%S")
         );
     }
 }
