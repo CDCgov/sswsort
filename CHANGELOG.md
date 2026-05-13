@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file. The format
 is roughly based on [Keep a Changelog], and this project tries to adheres to
 [Semantic Versioning].
 
+## [2.2.1] - 2026-05-13
+
+### Changes
+
+- MacOS Intel builds require AVX2.
+
+### Fixes
+
+- Actually produce the appropriate release artifacts from now that immutable
+  releases are active. Use in lieu of v2.2.0
+
 ## [2.2.0] - 2026-05-13
 
 ### Added
@@ -18,7 +29,7 @@ is roughly based on [Keep a Changelog], and this project tries to adheres to
 
 ## [2.1.0] - 2026-04-29
 
-### Added 
+### Added
 
 - Added a constructor for `TomlConfig`, as well as a method `get` to attempt to
   fetch a set of module parameters by name
@@ -103,6 +114,7 @@ is roughly based on [Keep a Changelog], and this project tries to adheres to
 - Initial release after alternatives testing. Smith-Waterman gave the most sensitive results for this purose.
 
 <!-- Versions -->
+[2.2.1]: https://github.com/CDCgov/sswsort/compare/v2.2.0...v2.2.1
 [2.2.0]: https://github.com/CDCgov/sswsort/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/CDCgov/sswsort/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/CDCgov/sswsort/compare/v1.6.3...v2.0.0
