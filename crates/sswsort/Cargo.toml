@@ -7,7 +7,7 @@ rust-version.workspace = true
 
 [dependencies]
 zoe = { workspace = true }
-toml = "0.9"
+toml = "1"
 serde = "1"
 serde_derive = "1"
 foldhash = "0.2"

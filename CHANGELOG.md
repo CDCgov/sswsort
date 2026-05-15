@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file. The format
 is roughly based on [Keep a Changelog], and this project tries to adheres to
 [Semantic Versioning].
 
+## [2.2.2] - 2026-05-16
+
+### Changes
+
+- Provides record id when throwing error for empty sequence in a TSV input
+
 ## [2.2.1] - 2026-05-13
 
 ### Changes
@@ -114,6 +120,7 @@ is roughly based on [Keep a Changelog], and this project tries to adheres to
 - Initial release after alternatives testing. Smith-Waterman gave the most sensitive results for this purose.
 
 <!-- Versions -->
+[2.2.2]: https://github.com/CDCgov/sswsort/compare/v2.2.1...v2.2.2
 [2.2.1]: https://github.com/CDCgov/sswsort/compare/v2.2.0...v2.2.1
 [2.2.0]: https://github.com/CDCgov/sswsort/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/CDCgov/sswsort/compare/v2.0.0...v2.1.0

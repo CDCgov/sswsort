@@ -69,7 +69,7 @@ impl<R: Read> TsvReader<R> {
         if sequence.is_empty() {
             return Err(std::io::Error::new(
                 ErrorKind::InvalidData,
-                "Invalid TSV: sequence (second column) cannot be empty",
+                format!("Invalid TSV: Missing sequence (second column)! See record id: {name}"),
             ));
         }
         Ok(FastaSeq { name, sequence })
