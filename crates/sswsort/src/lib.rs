@@ -1,6 +1,5 @@
 use foldhash::{HashMap, HashMapExt};
 use serde::{Deserialize, Deserializer, de};
-use serde_derive::Deserialize;
 use std::{
     cmp::max,
     collections::{BTreeMap, BTreeSet},
