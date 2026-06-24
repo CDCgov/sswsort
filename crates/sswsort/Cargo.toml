@@ -12,5 +12,8 @@ toml = { version = "1", default-features = false, features = [
     "serde",
     "std",
 ] }
-serde = { version = "1", features = [ "derive" ] }
+serde = { version = "1", features = ["derive"] }
 foldhash = "0.2"
+
+[lints]
+workspace = true

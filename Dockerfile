@@ -28,6 +28,9 @@ RUN if [ -n "$sswsort_branch" ]; then git checkout "$sswsort_branch"; fi \
     && cargo build --workspace --profile prod \
     && cargo test --workspace
 
+FROM scratch AS binary-export
+COPY --from=builder /sswsort/target/prod/sswsort /sswsort
+
 FROM dhi.io/debian-base:bookworm AS base
 
 USER 0

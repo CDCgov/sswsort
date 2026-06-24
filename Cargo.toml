@@ -13,6 +13,9 @@ zoe = { version = "0.0.30", default-features = false, features = [
   "multiversion",
 ] }
 
+[workspace.lints.rust]
+stable_features = "allow"
+
 [profile.prod]
 inherits = "release"
 codegen-units = 1
