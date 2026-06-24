@@ -80,7 +80,6 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ github.repository }}
           tags: |
             type=raw,value=${{ github.ref_name }}-${{ matrix.arch }}
-            type=raw,value=latest-${{ matrix.arch }},enable=${{ github.ref_name != 'test' }}
 
       - name: Build and push Docker image
         id: buildpush
@@ -89,7 +88,11 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
+          provenance: mode=max
+          sbom: generator=docker/scout-sbom-indexer:latest
           tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
 
       - name: Prepare Linux Binary
         shell: bash
@@ -126,23 +129,35 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v6
+        env:
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: index
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}
+          tags: |
+            type=raw,value=${{ github.ref_name }}
+
       - name: Create and push manifests
         shell: bash
+        env:
+          DOCKER_METADATA_OUTPUT_ANNOTATIONS: ${{ steps.meta.outputs.annotations }}
         run: |
           REPO=$(echo "${{ env.REGISTRY }}/${{ github.repository }}" | tr '[A-Z]' '[a-z]')
           VERSION="${REPO}:${{ github.ref_name }}"
           LATEST="${REPO}:latest"
 
-          docker manifest create "$VERSION" \
-            --amend "${VERSION}-x86_64" \
-            --amend "${VERSION}-aarch64"
-          docker manifest push "$VERSION"
+          annotations=()
+          while IFS= read -r annot; do
+            [[ -n "$annot" ]] && annotations+=(--annotation "$annot")
+          done <<< "$DOCKER_METADATA_OUTPUT_ANNOTATIONS"
+
+          docker buildx imagetools create "${annotations[@]}" --tag "$VERSION" \
+            "${VERSION}-x86_64" "${VERSION}-aarch64"
 
           if [[ "${{ github.ref_name }}" != "test" ]]; then
-            docker manifest create "$LATEST" \
-              --amend "${LATEST}-x86_64" \
-              --amend "${LATEST}-aarch64"
-            docker manifest push "$LATEST"
+            docker buildx imagetools create --tag "$LATEST" "$VERSION"
           fi
 
   build-mac-artifacts:
