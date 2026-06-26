@@ -83,12 +83,12 @@ define_whichever! {
 }
 
 define_whichever! {
-    enum QueryReader<IR: Read> {
-        Fasta(FastaReader<IR>),
-        Tsv(TsvReader<IR>)
+    enum QueryReader<R: Read> {
+        Fasta(FastaReader<R>),
+        Tsv(TsvReader<R>)
     }
 
-    impl<IR: Read> Iterator for QueryReader<IR> {
+    impl<R: Read> Iterator for QueryReader<R> {
         type Item = Result<FastaSeq, Error>;
     }
 }
