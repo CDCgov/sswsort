@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file. The format
 is roughly based on [Keep a Changelog], and this project tries to adheres to
 [Semantic Versioning].
 
+## [2.2.4] - 2026-06-29
+
+## Changes
+
+- Updates the Dockerfile to use trixie-dev (needs apt). Default user is still
+  nonroot. Adds image signing.
+
+### Fixes
+
+- The container dpkg data is no longer incorrectly deleted (needed by scanners)
+
 ## [2.2.3] - 2026-06-24
 
 ### Changes
@@ -126,6 +137,7 @@ is roughly based on [Keep a Changelog], and this project tries to adheres to
 - Initial release after alternatives testing. Smith-Waterman gave the most sensitive results for this purose.
 
 <!-- Versions -->
+[2.2.4]: https://github.com/CDCgov/sswsort/compare/v2.2.3...v2.2.4
 [2.2.3]: https://github.com/CDCgov/sswsort/compare/v2.2.2...v2.2.3
 [2.2.2]: https://github.com/CDCgov/sswsort/compare/v2.2.1...v2.2.2
 [2.2.1]: https://github.com/CDCgov/sswsort/compare/v2.2.0...v2.2.1

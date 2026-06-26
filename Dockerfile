@@ -31,9 +31,7 @@ RUN if [ -n "$sswsort_branch" ]; then git checkout "$sswsort_branch"; fi \
 FROM scratch AS binary-export
 COPY --from=builder /sswsort/target/prod/sswsort /sswsort
 
-FROM dhi.io/debian-base:bookworm AS base
-
-USER 0
+FROM dhi.io/debian-base:trixie-dev AS base
 
 ARG APT_MIRROR_NAME=
 RUN if [ -n "$APT_MIRROR_NAME" ]; then sed -i.bak -E '/security/! s^https?://.+?/(debian|ubuntu)^http://'"$APT_MIRROR_NAME"'/\1^' /etc/apt/sources.list && grep '^deb' /etc/apt/sources.list; fi
@@ -41,7 +39,7 @@ RUN apt-get update --allow-releaseinfo-change --fix-missing \
     && DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y procps \
     && apt clean autoclean \
     && apt autoremove --yes \
-    && rm -rf /var/lib/{apt,dpkg,cache,log}/
+    && rm -rf /var/lib/apt/lists/* /var/cache/* /var/log/* /tmp/* /var/tmp/*
 
 WORKDIR /app
 COPY --from=builder \
@@ -60,3 +58,15 @@ USER nonroot
 
 ENV PATH="/app:${PATH}"
 WORKDIR /data
+
+
+# Verify the image signature and SLSA provenance attestation (replace TAG):
+#
+#   cosign verify ghcr.io/cdcgov/sswsort:TAG \
+#     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+#     --certificate-identity-regexp '^https://github.com/CDCgov/sswsort/.github/workflows/release.yml@.*$'
+#
+#   gh attestation verify oci://ghcr.io/cdcgov/sswsort:TAG \
+#     --owner CDCgov \
+#     --bundle-from-oci \
+#     --signer-workflow CDCgov/sswsort/.github/workflows/release.yml
