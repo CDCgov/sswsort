@@ -62,11 +62,12 @@ WORKDIR /data
 
 # Verify the image signature and SLSA provenance attestation (replace TAG):
 #
-#   cosign verify ghcr.io/cdcgov/sswsort:TAG \
+#   cosign verify --new-bundle-format ghcr.io/cdcgov/sswsort:TAG \
 #     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
 #     --certificate-identity-regexp '^https://github.com/CDCgov/sswsort/.github/workflows/release.yml@.*$'
 #
-#   gh attestation verify oci://ghcr.io/cdcgov/sswsort:TAG \
-#     --owner CDCgov \
-#     --bundle-from-oci \
-#     --signer-workflow CDCgov/sswsort/.github/workflows/release.yml
+#   cosign verify-attestation --new-bundle-format --type slsaprovenance1 \
+#     ghcr.io/cdcgov/sswsort:TAG \
+#     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+#     --certificate-identity-regexp '^https://github.com/CDCgov/sswsort/.github/workflows/release.yml@.*$'
+
