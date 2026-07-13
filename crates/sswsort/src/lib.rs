@@ -507,6 +507,7 @@ impl TomlConfig {
 ///
 /// [`get`]: TomlConfig::get
 #[derive(Deserialize, Debug, Default)]
+#[serde(deny_unknown_fields)]
 pub struct ModuleParameters {
     /// The name of the module (e.g., `flu`, `cov`, `spike`, `rsv`).
     pub name:                String,
@@ -575,6 +576,7 @@ impl Default for Weights {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RawWeights {
     gap_open:     i8,
     gap_extend:   i8,
