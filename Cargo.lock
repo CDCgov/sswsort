@@ -421,7 +421,7 @@ dependencies = [
 
 [[package]]
 name = "sswsort"
-version = "2.2.5"
+version = "2.2.5-dev"
 dependencies = [
  "foldhash",
  "serde",
@@ -431,7 +431,7 @@ dependencies = [
 
 [[package]]
 name = "sswsort-cli"
-version = "2.2.5"
+version = "2.2.5-dev"
 dependencies = [
  "clap",
  "jiff",

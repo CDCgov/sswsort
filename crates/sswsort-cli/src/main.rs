@@ -6,10 +6,13 @@ use sswsort::*;
 use std::{
     io::{Error, Read, Write},
     num::NonZero,
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 use zoe::{
-    data::fasta::{FastaNT, FastaSeq},
+    data::{
+        err::ResultWithErrorContext,
+        fasta::{FastaNT, FastaSeq},
+    },
     define_whichever,
     iter_utils::ProcessResultsExt,
     prelude::*,
@@ -68,6 +71,42 @@ struct ClassifierArgs {
     submit_grid_job: Option<usize>,
 }
 
+impl ClassifierArgs {
+    fn validate_paths(&self) -> std::io::Result<()> {
+        if let Some(output_path) = &self.output_file {
+            let input_canon =
+                std::fs::canonicalize(&self.input).with_path_context("Failed to canonicalize path", &self.input)?;
+            let output_canon = if output_path.exists() {
+                std::fs::canonicalize(output_path).with_path_context("Failed to canonicalize path", output_path)?
+            } else {
+                let filename = output_path.file_name().ok_or_else(|| {
+                    std::io::Error::other(format!(
+                        "Failed to find filename of path: {path}",
+                        path = output_path.display()
+                    ))
+                })?;
+                let parent = match output_path.parent() {
+                    Some(parent) if !parent.as_os_str().is_empty() => parent,
+                    _ => Path::new("."),
+                };
+                let canonical_parent =
+                    std::fs::canonicalize(parent).with_path_context("Failed to canonicalize parent path", parent)?;
+                canonical_parent.join(filename)
+            };
+
+            if input_canon == output_canon {
+                return Err(std::io::Error::other(format!(
+                    "Input and output files were identical: {input}",
+                    input = input_canon.display()
+                )));
+            }
+            Ok(())
+        } else {
+            Ok(())
+        }
+    }
+}
+
 define_whichever! {
     /// An enum representing the allowable output types.
     ///
@@ -96,6 +135,8 @@ define_whichever! {
 
 fn main() {
     let args = ClassifierArgs::parse();
+    args.validate_paths().unwrap_or_fail();
+
     let use_stderr = args.output_file.is_none();
 
     let query_reader = if !&args.input_is_tsv {
