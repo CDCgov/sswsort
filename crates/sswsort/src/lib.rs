@@ -514,6 +514,7 @@ pub struct ModuleParameters {
     /// An optional version for the module to aid in version control.
     pub version:             Option<String>,
     /// Any alternative names that can be used to refer to the module.
+    #[serde(default)]
     pub alternative_names:   Vec<String>,
     /// The minimum normalized score for deciding unrecognizability.
     pub norm_score_minimum:  f32,

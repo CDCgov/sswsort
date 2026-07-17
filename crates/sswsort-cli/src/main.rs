@@ -41,6 +41,7 @@ struct ClassifierArgs {
     /// Name of the tab-separated-value file for classifier results. If none are
     /// provided, STDOUT is used. If a directory is specified, a default
     /// filename of `sswsort_output.tsv`
+    #[arg(long, short = 'o')]
     output_file: Option<PathBuf>,
 
     /// Boolean flag for if the input provided is in TSV format instead of FASTA

@@ -4,9 +4,17 @@ All notable changes to this project will be documented in this file. The format
 is roughly based on [Keep a Changelog], and this project tries to adheres to
 [Semantic Versioning].
 
+## [2.2.5] - 2026-07-17
+
+### Changes
+
+- Adds `influenza` as an alternative name for the `flu` module, and `betacoronavirus` for `cov` module
+- Makes the `alternative_names` field for modules in the `config.toml` optional
+- Adds short CLI option `-o` as an alias for `--output-file`
+
 ## [2.2.4] - 2026-06-29
 
-## Changes
+### Changes
 
 - Updates the Dockerfile to use trixie-dev (needs apt). Default user is still
   nonroot. Adds image signing.
@@ -137,6 +145,7 @@ is roughly based on [Keep a Changelog], and this project tries to adheres to
 - Initial release after alternatives testing. Smith-Waterman gave the most sensitive results for this purose.
 
 <!-- Versions -->
+[2.2.5]: https://github.com/CDCgov/sswsort/compare/v2.2.4...v2.2.5
 [2.2.4]: https://github.com/CDCgov/sswsort/compare/v2.2.3...v2.2.4
 [2.2.3]: https://github.com/CDCgov/sswsort/compare/v2.2.2...v2.2.3
 [2.2.2]: https://github.com/CDCgov/sswsort/compare/v2.2.1...v2.2.2

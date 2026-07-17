@@ -421,7 +421,7 @@ dependencies = [
 
 [[package]]
 name = "sswsort"
-version = "2.2.4"
+version = "2.2.5"
 dependencies = [
  "foldhash",
  "serde",
@@ -431,7 +431,7 @@ dependencies = [
 
 [[package]]
 name = "sswsort-cli"
-version = "2.2.4"
+version = "2.2.5"
 dependencies = [
  "clap",
  "jiff",
@@ -558,9 +558,9 @@ checksum = "0592e1c9d151f854e6fd382574c3a0855250e1d9b2f99d9281c6e6391af352f1"
 
 [[package]]
 name = "zoe"
-version = "0.0.30"
+version = "0.0.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09bd1a6c01decd9eec39ee2db32c0eb327efbdcdc7fb49dea1d066aa8651b29a"
+checksum = "47f6c50a0c4865ccbdb6a15c0b20c8d9ab057397b6102cca2c1f46ccb7b5de3c"
 dependencies = [
  "multiversion",
 ]

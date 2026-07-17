@@ -24,7 +24,8 @@ Arguments:
   [OUTPUT_FILE]  Name of the tab-separated-value file for classifier results. If none are provided, STDOUT is used. If a directory is specified, a default filename of `sswsort_output.tsv`
 
 Options:
-      --input-is-tsv               Boolean flag for if the input provided is in TSV format instead of FASTA format
+  -o, --output-file             Optional path to output file
+      --input-is-tsv            Boolean flag for if the input provided is in TSV format instead of FASTA format
   -T, --threads <THREADS>       Number of threads to use. Defaults to number of physical cores otherwise
   -G, --is-grid-task            Execute as a partitioned task in a grid job, for use with: --submit-grid-job
   -S, --submit-grid-job <SIZE>  Submits and blocks on a grid job of the specified array size
@@ -83,7 +84,7 @@ sswsort flu flu_samples.tsv --input-is-tsv
 
 The TSV format should have the name/id of the read in the first column, followed
 by the sequence in the second column. Additional columns are allowed but
-ignored. 
+ignored.
 
 ## Outputs
 
@@ -123,7 +124,7 @@ default following weights for scoring:
 | Gap open   | -10    |
 | Gap extend | -1     |
 
-Defaults can be overridden at a module level within the `config.toml`. 
+Defaults can be overridden at a module level within the `config.toml`.
 
 Example:
 
@@ -139,6 +140,7 @@ reference_sequences = "flu.fasta"
 detect_chimera = true
 weights = { gap_open = -11, gap_extend = -2, mismatch = -3, match_weight = 1 }
 ```
+
 will override the values for all weights. Note if some but not all weights are
 being overridden, the other values still need to be included in the `toml`.
 

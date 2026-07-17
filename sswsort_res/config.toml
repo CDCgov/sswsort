@@ -1,7 +1,7 @@
 [[classification_module]]
 name = "flu"
 version = "2.0"
-alternative_names = []
+alternative_names = ["influenza"]
 norm_score_minimum = 1.0
 score_minimum = 100
 length_minimum = 25
@@ -11,7 +11,7 @@ detect_chimera = true
 [[classification_module]]
 name = "cov"
 version = "1.0"
-alternative_names = ["cov-beta", "covid", "sc2"]
+alternative_names = ["cov-beta", "covid", "sc2", "betacoronavirus"]
 norm_score_minimum = 1.0
 score_minimum = 100
 length_minimum = 25
@@ -31,7 +31,6 @@ detect_chimera = true
 [[classification_module]]
 name = "rsv"
 version = "1.0"
-alternative_names = []
 norm_score_minimum = 1.0
 score_minimum = 100
 length_minimum = 25
