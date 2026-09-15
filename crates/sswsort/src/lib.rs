@@ -5,12 +5,12 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
     fs::read_to_string,
-    io::Error as IOError,
+    io::{Error as IOError, ErrorKind},
     path::{Path, PathBuf},
 };
 use zoe::{
     alignment::{LocalProfiles, ProfileSets},
-    data::{WeightMatrix, err::ResultWithErrorContext, fasta::FastaNTAnnot},
+    data::{WeightMatrix, err::ResultWithErrorContext, fasta::FastaSeq, nucleotides::ToDNA, records::GetAnnotation},
     iter_utils::ProcessResultsExt,
     prelude::*,
 };
@@ -145,6 +145,47 @@ impl<'a> ClassificationResult<'a> {
     }
 }
 
+/// Holds all relevant information for a reference and its reverse complement
+/// for SSWSort
+pub struct Reference {
+    pub name:     String,
+    pub sequence: Nucleotides,
+    pub taxon:    String,
+    pub rev_comp: Nucleotides,
+}
+
+impl TryFrom<FastaSeq> for Reference {
+    type Error = std::io::Error;
+    /// Tries to convert a [`FastaSeq`] into a [`Reference`]
+    ///
+    /// ## Errors
+    ///
+    /// Returns an error if unable to find a taxon in the fasta header
+    fn try_from(fa: FastaSeq) -> Result<Self, Self::Error> {
+        let (name, mut annotations) = fa.split_annotations()?;
+
+        let Some(taxon) = annotations.next().transpose()?.filter(|taxon| !taxon.is_empty()) else {
+            return Err(std::io::Error::new(
+                ErrorKind::InvalidData,
+                format!("No taxon for: {}", fa.name),
+            ));
+        };
+
+        let name = name.to_string();
+        let taxon = taxon.to_string();
+
+        let sequence = fa.sequence.filter_to_dna();
+        let rev_comp = sequence.to_reverse_complement();
+
+        Ok(Reference {
+            name,
+            sequence,
+            taxon,
+            rev_comp,
+        })
+    }
+}
+
 /// Takes a reference and query profile to calculate a Smith Waterman alignment
 /// score. `None` is returned if no alignment is found (or if the alignment
 /// overflows `i32`).
@@ -153,12 +194,10 @@ impl<'a> ClassificationResult<'a> {
 /// the pre-computed reverse complement.
 #[inline]
 fn calculate_alignment_score<'a>(
-    reference: &'a (FastaNTAnnot, Nucleotides), query_profile: &LocalProfiles<64, 32, 16, 5>,
+    reference: &'a Reference, query_profile: &LocalProfiles<64, 32, 16, 5>,
 ) -> Option<(u32, &'a str, Strand)> {
-    let (reference, reference_seq_revcomp) = reference;
-
     let score_pos = query_profile.sw_score_from_i8(&reference.sequence).get();
-    let score_neg = query_profile.sw_score_from_i8(reference_seq_revcomp).get();
+    let score_neg = query_profile.sw_score_from_i8(&reference.rev_comp).get();
 
     match (score_pos, score_neg) {
         (Some(pos), Some(neg)) => {
@@ -430,7 +469,7 @@ pub struct SSWSortModule {
     /// The name of the module (e.g., `flu`, `cov`, `spike`, `rsv`).
     pub name:           String,
     /// The references along with their reverse complements.
-    references:         Vec<(FastaNTAnnot, Nucleotides)>,
+    references:         Vec<Reference>,
     /// The minimum normalized score for deciding unrecognizability.
     norm_score_minimum: f32,
     /// The minimum absolute score for deciding unrecognizability.
@@ -633,18 +672,14 @@ impl SSWSortModule {
 
         // Create references vector and populate length_by_annot in single pass
         let references = FastaReader::from_path(reference_sequences)?
-            .map(|res| res.and_then(FastaNTAnnot::try_from))
+            .map(|res| res.and_then(Reference::try_from))
             .process_results(|iter| {
-                iter.map(|fa| {
-                    let this_len = fa.sequence.len() * length_factor;
+                iter.inspect(|reference| {
+                    let this_len = reference.sequence.len() * length_factor;
                     length_by_annot
-                        .entry(fa.taxon.clone())
+                        .entry(reference.taxon.clone())
                         .and_modify(|len| *len = max(*len, this_len))
                         .or_insert(this_len);
-
-                    let reference_sequence_revcomp = fa.sequence.to_reverse_complement();
-
-                    (fa, reference_sequence_revcomp)
                 })
                 .collect::<Vec<_>>()
             })?;

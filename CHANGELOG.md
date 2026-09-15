@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file. The format
 is roughly based on [Keep a Changelog], and this project tries to adheres to
 [Semantic Versioning].
 
+## [2.2.6-dev] - TBD
+
+### Changes
+
+- Changes internal API to remove deprecated `FastaNTAnnot` struct from Zoe and
+  replace it with an SSWSort-specific `Reference` struct
+
 ## [2.2.5] - 2026-07-17
 
 ### Changes
@@ -146,6 +153,7 @@ is roughly based on [Keep a Changelog], and this project tries to adheres to
 - Initial release after alternatives testing. Smith-Waterman gave the most sensitive results for this purose.
 
 <!-- Versions -->
+[2.2.6-dev]: https://github.com/CDCgov/sswsort/compare/v2.2.5...v2.2.6
 [2.2.5]: https://github.com/CDCgov/sswsort/compare/v2.2.4...v2.2.5
 [2.2.4]: https://github.com/CDCgov/sswsort/compare/v2.2.3...v2.2.4
 [2.2.3]: https://github.com/CDCgov/sswsort/compare/v2.2.2...v2.2.3
