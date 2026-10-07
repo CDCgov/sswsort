@@ -10,7 +10,7 @@ use std::{
 };
 use zoe::{
     data::{
-        err::ResultWithErrorContext,
+        err::{ErrorWithContext, ResultWithErrorContext},
         fasta::{FastaNT, FastaSeq},
     },
     define_whichever,
@@ -133,26 +133,26 @@ define_whichever! {
     }
 }
 
-fn main() {
+fn main() -> Result<(), ErrorWithContext> {
     let args = ClassifierArgs::parse();
-    args.validate_paths().unwrap_or_fail();
+    args.validate_paths()?;
 
     let use_stderr = args.output_file.is_none();
 
     let query_reader = if !&args.input_is_tsv {
-        QueryReader::Fasta(FastaReader::from_path(&args.input).unwrap_or_die("Cannot open FASTA input!"))
+        QueryReader::Fasta(FastaReader::from_path(&args.input).with_context("Cannot open FASTA input!")?)
     } else {
-        QueryReader::Tsv(TsvReader::from_path(&args.input).unwrap_or_die("Cannot open TSV input!"))
+        QueryReader::Tsv(TsvReader::from_path(&args.input).with_context("Cannot open TSV input!")?)
     };
 
-    let module = get_sswsort_module(&args.module).unwrap_or_die("Failed to load module data!");
+    let module = get_sswsort_module(&args.module).with_context("Failed to load module data!")?;
     let canonical_module = module.name.as_str();
 
     if let Some(n) = args.submit_grid_job
         && let Some(output) = args.output_file
     {
-        submit_job_sync(n, canonical_module, &args.input, output).unwrap_or_die("Qsub job submission failed!");
-        return;
+        submit_job_sync(n, canonical_module, &args.input, output).with_context("Qsub job submission failed!")?;
+        return Ok(());
     }
 
     time_stamp(
@@ -174,7 +174,7 @@ fn main() {
         } else if path.is_dir() {
             path.set_file_name("sswsort_output.tsv");
         }
-        AnyOutput::File(std::fs::File::create(path).unwrap_or_die("Cannot create output file!"))
+        AnyOutput::File(std::fs::File::create(path).with_context("Cannot create output file!")?)
     } else {
         AnyOutput::Stdout(std::io::stdout())
     });
@@ -196,7 +196,7 @@ fn main() {
                     )
                 });
 
-                write_results(&mut w, iter_results, canonical_module).unwrap_or_die("Could not write to file!");
+                write_results(&mut w, iter_results, canonical_module).with_context("Could not write to file!")
             } else if args.threads.is_none_or(|n| n.get() > 1) {
                 let t = if let Some(n) = args.threads {
                     n.get()
@@ -218,7 +218,7 @@ fn main() {
                     })
                     .collect();
 
-                write_results(&mut w, results.into_iter(), canonical_module).unwrap_or_die("Could not write to file!");
+                write_results(&mut w, results.into_iter(), canonical_module).with_context("Could not write to file!")
             } else {
                 let iter_results = queries.map(|query| {
                     (
@@ -227,14 +227,16 @@ fn main() {
                         query.sequence.len(),
                     )
                 });
-                write_results(&mut w, iter_results, canonical_module).unwrap_or_die("Could not write to file!");
+                write_results(&mut w, iter_results, canonical_module).with_context("Could not write to file!")
             }
         })
-        .unwrap_or_die("Failed to read input file");
+        .with_context("Failed to read input file")??;
 
     w.flush().expect("Flushing failed, there may be missing data");
 
     time_stamp("finished", use_stderr);
+
+    Ok(())
 }
 
 /// Performs classification with [`SSWSortModule::classify_top_two`], printing

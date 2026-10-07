@@ -557,8 +557,9 @@ checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
 
 [[package]]
 name = "zoe"
-version = "0.0.33-dev"
-source = "git+https://github.com/cdcgov/zoe#e21f56abf15ae2a55cf77a2897f06b466a359514"
+version = "0.0.34"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a9593e24824ee9448a3a1b07351ae4a9b3247c39bddbc514d9de5b4a953c1f2e"
 dependencies = [
  "multiversion",
 ]
