@@ -10,7 +10,7 @@ use std::{
 };
 use zoe::{
     alignment::{LocalProfiles, ProfileSets},
-    data::{WeightMatrix, err::ResultWithErrorContext, fasta::FastaSeq, nucleotides::ToDNA, records::GetAnnotation},
+    data::{WeightMatrix, err::ResultWithErrorContext, fasta::Fasta, nucleotides::ToDNA, records::GetAnnotation},
     iter_utils::ProcessResultsExt,
     prelude::*,
 };
@@ -154,20 +154,20 @@ pub struct Reference {
     pub rev_comp: Nucleotides,
 }
 
-impl TryFrom<FastaSeq> for Reference {
+impl TryFrom<Fasta> for Reference {
     type Error = std::io::Error;
-    /// Tries to convert a [`FastaSeq`] into a [`Reference`]
+    /// Tries to convert a [`Fasta`] into a [`Reference`]
     ///
     /// ## Errors
     ///
     /// Returns an error if unable to find a taxon in the fasta header
-    fn try_from(fa: FastaSeq) -> Result<Self, Self::Error> {
+    fn try_from(fa: Fasta) -> Result<Self, Self::Error> {
         let (name, mut annotations) = fa.split_annotations()?;
 
         let Some(taxon) = annotations.next().transpose()?.filter(|taxon| !taxon.is_empty()) else {
             return Err(std::io::Error::new(
                 ErrorKind::InvalidData,
-                format!("No taxon for: {}", fa.name),
+                format!("No taxon for: {}", fa.header),
             ));
         };
 

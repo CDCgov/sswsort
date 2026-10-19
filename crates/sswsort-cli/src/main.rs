@@ -11,7 +11,7 @@ use std::{
 use zoe::{
     data::{
         err::{ErrorWithContext, ResultWithErrorContext},
-        fasta::{FastaNT, FastaSeq},
+        fasta::Fasta,
     },
     define_whichever,
     iter_utils::ProcessResultsExt,
@@ -129,7 +129,7 @@ define_whichever! {
     }
 
     impl<R: Read> Iterator for QueryReader<R> {
-        type Item = Result<FastaSeq, Error>;
+        type Item = Result<Fasta, Error>;
     }
 }
 
@@ -180,7 +180,7 @@ fn main() -> Result<(), ErrorWithContext> {
     });
 
     query_reader
-        .map(|res| res.map(FastaSeq::filter_to_dna))
+        .map(|res| res.map(Fasta::filter_to_dna))
         .process_results(|queries| {
             if let Some(g) = grid {
                 // 0-based skip so we start on our parition
@@ -191,7 +191,7 @@ fn main() -> Result<(), ErrorWithContext> {
                 let iter_results = queries.skip(offset).step_by(array_size).map(|query| {
                     (
                         classify_top_two_with_warning(&module, &query),
-                        query.name,
+                        query.header,
                         query.sequence.len(),
                     )
                 });
@@ -212,7 +212,7 @@ fn main() -> Result<(), ErrorWithContext> {
                     .map(|query| {
                         (
                             classify_top_two_with_warning(&module, &query),
-                            query.name,
+                            query.header,
                             query.sequence.len(),
                         )
                     })
@@ -223,7 +223,7 @@ fn main() -> Result<(), ErrorWithContext> {
                 let iter_results = queries.map(|query| {
                     (
                         classify_top_two_with_warning(&module, &query),
-                        query.name,
+                        query.header,
                         query.sequence.len(),
                     )
                 });
@@ -241,9 +241,11 @@ fn main() -> Result<(), ErrorWithContext> {
 
 /// Performs classification with [`SSWSortModule::classify_top_two`], printing
 /// to `stderr` in case of empty input.
-fn classify_top_two_with_warning<'a>(module: &'a SSWSortModule, query: &FastaNT) -> [ClassificationResult<'a>; 2] {
+fn classify_top_two_with_warning<'a>(
+    module: &'a SSWSortModule, query: &Fasta<Nucleotides>,
+) -> [ClassificationResult<'a>; 2] {
     if query.sequence.is_empty() {
-        eprintln!("WARNING: '{name}' was empty.", name = query.name);
+        eprintln!("WARNING: '{name}' was empty.", name = query.header);
     }
 
     module.classify_top_two(&query.sequence)

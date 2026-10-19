@@ -5,7 +5,7 @@ use std::{
 };
 
 use zoe::{
-    data::{err::ResultWithErrorContext, fasta::FastaSeq},
+    data::{err::ResultWithErrorContext, fasta::Fasta},
     unwrap_or_return_some_err,
 };
 
@@ -49,11 +49,11 @@ impl<R: Read> TsvReader<R> {
         Ok(TsvReader { lines: reader.lines() })
     }
 
-    fn parse_line(line: &str) -> Result<FastaSeq, Error> {
+    fn parse_line(line: &str) -> Result<Fasta, Error> {
         let mut columns = line.split('\t').map(|part| part.trim_ascii().to_string());
 
-        let name = columns.next().unwrap_or_default();
-        if name.is_empty() {
+        let header = columns.next().unwrap_or_default();
+        if header.is_empty() {
             return Err(std::io::Error::new(
                 ErrorKind::InvalidData,
                 "Invalid TSV: sequence name (first column) cannot be empty",
@@ -69,15 +69,15 @@ impl<R: Read> TsvReader<R> {
         if sequence.is_empty() {
             return Err(std::io::Error::new(
                 ErrorKind::InvalidData,
-                format!("Invalid TSV: Missing sequence (second column)! See record id: {name}"),
+                format!("Invalid TSV: Missing sequence (second column)! See record id: {header}"),
             ));
         }
-        Ok(FastaSeq { name, sequence })
+        Ok(Fasta { header, sequence })
     }
 }
 
 impl<R: Read> Iterator for TsvReader<R> {
-    type Item = Result<FastaSeq, Error>;
+    type Item = Result<Fasta, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {

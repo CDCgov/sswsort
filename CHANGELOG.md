@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file. The format
 is roughly based on [Keep a Changelog], and this project tries to adheres to
 [Semantic Versioning].
 
+## [2.2.7-dev] - TBD
+
+### Changes
+
+- Updates internal API to use new Zoe `Fasta` struct and relevant fields
+
 ## [2.2.6] - 2026-10-07
 
 ### Changes
@@ -153,6 +159,7 @@ is roughly based on [Keep a Changelog], and this project tries to adheres to
 - Initial release after alternatives testing. Smith-Waterman gave the most sensitive results for this purose.
 
 <!-- Versions -->
+[2.2.7-dev]: https://github.com/CDCgov/sswsort/compare/2.2.6...2.2.7
 [2.2.6]: https://github.com/CDCgov/sswsort/compare/v2.2.5...v2.2.6
 [2.2.5]: https://github.com/CDCgov/sswsort/compare/v2.2.4...v2.2.5
 [2.2.4]: https://github.com/CDCgov/sswsort/compare/v2.2.3...v2.2.4
