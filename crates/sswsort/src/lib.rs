@@ -1,34 +1,24 @@
 use foldhash::{HashMap, HashMapExt};
-use serde::{Deserialize, Deserializer, de};
+use serde::{Deserialize, de};
 use std::{
     cmp::max,
     collections::{BTreeMap, BTreeSet},
     fmt,
     fs::read_to_string,
-    io::{Error as IOError, ErrorKind},
+    io::ErrorKind,
     path::{Path, PathBuf},
 };
 use zoe::{
     alignment::{LocalProfiles, ProfileSets, ScoreParams},
-    data::{WeightMatrix, err::ResultWithErrorContext, fasta::Fasta, nucleotides::ToDNA, records::GetAnnotation},
+    data::{err::ResultWithErrorContext, fasta::Fasta, nucleotides::ToDNA, records::GetAnnotation},
     iter_utils::ProcessResultsExt,
     prelude::*,
 };
 
-// Default weights if not specified in TOML
-const WEIGHTS: Weights = Weights {
-    gap_open:     -10,
-    gap_extend:   -1,
-    mismatch:     -5,
-    match_weight: 2,
-};
-
-// Requirements for successful profile creation
-const _: () = {
-    // TODO: Replace with range.contains when that becomes const
-    assert!(-127 <= WEIGHTS.gap_open && WEIGHTS.gap_open <= 0);
-    assert!(-127 <= WEIGHTS.gap_extend && WEIGHTS.gap_extend <= 0);
-    assert!(WEIGHTS.gap_extend >= WEIGHTS.gap_open);
+/// The default scoring parameters for SSWSort.
+const DEFAULT_PARAMS: ScoreParams<i8, 5> = match ScoreParams::new_dna_params(2, -5, -10, -1, Some(b'N')) {
+    Ok(params) => params,
+    Err(_) => panic!("Invalid weights"),
 };
 
 /// The strand of the reference to which the query best aligned.
@@ -365,8 +355,7 @@ impl SSWSortModule {
             return ClassificationResult::none();
         }
 
-        let score_params = self.weights_and_matrix.score_params();
-        let query_profile = LocalProfiles::new_with_w512(sequence, &score_params);
+        let query_profile = LocalProfiles::new_with_w512(sequence, &self.score_params);
 
         let taxa = self
             .references
@@ -414,8 +403,7 @@ impl SSWSortModule {
             return [ClassificationResult::none(), ClassificationResult::none()];
         }
 
-        let score_params = self.weights_and_matrix.score_params();
-        let query_profile = LocalProfiles::new_with_w512(sequence, &score_params);
+        let query_profile = LocalProfiles::new_with_w512(sequence, &self.score_params);
 
         let taxa = self
             .references
@@ -466,7 +454,7 @@ pub struct SSWSortModule {
     /// A map from taxa to its maximum reference length.
     length_by_annot:    HashMap<String, usize>,
     /// Weights and matrix for SSW scoring
-    weights_and_matrix: WeightsAndMatrix,
+    score_params:       ScoreParams<'static, i8, 5>,
 }
 
 /// For reading config options from `sswsort_res/config.toml`
@@ -529,7 +517,7 @@ impl TomlConfig {
 /// returned.
 ///
 /// [`get`]: TomlConfig::get
-#[derive(Deserialize, Debug, Default)]
+#[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct ModuleParameters {
     /// The name of the module (e.g., `flu`, `cov`, `spike`, `rsv`).
@@ -551,89 +539,37 @@ pub struct ModuleParameters {
     /// Whether or not to detect chimeric sequences.
     pub detect_chimera:      bool,
     /// Scoring weights for SSW scoring
-    #[serde(default)]
-    pub weights:             Weights,
+    #[serde(rename = "weights", default = "default_params", deserialize_with = "deserialize_params")]
+    pub score_params:        ScoreParams<'static, i8, 5>,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub struct Weights {
-    gap_open:     i8,
-    gap_extend:   i8,
-    mismatch:     i8,
-    match_weight: i8,
+/// A helper function for the default value of
+/// [`ModuleParameters::score_params`].
+fn default_params() -> ScoreParams<'static, i8, 5> {
+    DEFAULT_PARAMS
 }
 
-impl Weights {
-    /// Creates a new set of validated SSW scoring weights.
-    ///
-    /// ## Errors
-    ///
-    /// Returns an [`std::io::Error`] error if `gap_open` or
-    /// `gap_extend` is outside Zoe's supported `[-127, 0]` range, or if
-    /// `gap_extend` is less than `gap_open`.
-    pub fn new(gap_open: i8, gap_extend: i8, mismatch: i8, match_weight: i8) -> std::io::Result<Self> {
-        if !(-127..=0).contains(&gap_open) {
-            return Err(IOError::other("gap_open must be in [-127, 0]"));
-        }
-
-        if !(-127..=0).contains(&gap_extend) {
-            return Err(IOError::other("gap_extend must be in [-127, 0]"));
-        }
-
-        if gap_extend < gap_open {
-            return Err(IOError::other("gap_extend must be >= gap_open"));
-        }
-
-        Ok(Weights {
-            gap_open,
-            gap_extend,
-            mismatch,
-            match_weight,
-        })
+/// A helper function for the deserializing [`ModuleParameters::score_params`].
+fn deserialize_params<'de, D>(deserializer: D) -> Result<ScoreParams<'static, i8, 5>, D::Error>
+where
+    D: serde::Deserializer<'de>, {
+    #[derive(Copy, Clone, Eq, PartialEq, Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct UnvalidatedWeights {
+        gap_open:     i8,
+        gap_extend:   i8,
+        mismatch:     i8,
+        match_weight: i8,
     }
-}
 
-impl Default for Weights {
-    fn default() -> Self {
-        WEIGHTS
-    }
-}
+    let UnvalidatedWeights {
+        gap_open,
+        gap_extend,
+        mismatch,
+        match_weight,
+    } = UnvalidatedWeights::deserialize(deserializer)?;
 
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct RawWeights {
-    gap_open:     i8,
-    gap_extend:   i8,
-    mismatch:     i8,
-    match_weight: i8,
-}
-
-impl<'de> Deserialize<'de> for Weights {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>, {
-        let RawWeights {
-            gap_open,
-            gap_extend,
-            mismatch,
-            match_weight,
-        } = RawWeights::deserialize(deserializer)?;
-
-        Weights::new(gap_open, gap_extend, mismatch, match_weight).map_err(de::Error::custom)
-    }
-}
-
-#[derive(Debug)]
-pub struct WeightsAndMatrix {
-    pub weights: Weights,
-    pub matrix:  WeightMatrix<'static, i8, 5>,
-}
-
-impl WeightsAndMatrix {
-    /// Returns the validated alignment scoring parameters for this module.
-    fn score_params(&self) -> ScoreParams<'_, i8, 5> {
-        ScoreParams::new(&self.matrix, self.weights.gap_open, self.weights.gap_extend).expect("Weights are validated")
-    }
+    ScoreParams::new_dna_params(match_weight, mismatch, gap_open, gap_extend, Some(b'N')).map_err(de::Error::custom)
 }
 
 impl SSWSortModule {
@@ -653,7 +589,7 @@ impl SSWSortModule {
             length_minimum,
             reference_sequences,
             detect_chimera,
-            weights,
+            score_params,
         } = params;
 
         let mut name = name.clone();
@@ -680,11 +616,6 @@ impl SSWSortModule {
             name.push_str(v);
         }
 
-        let weights_and_matrix = WeightsAndMatrix {
-            weights: *weights,
-            matrix:  WeightMatrix::new_dna_matrix(weights.match_weight, weights.mismatch, Some(b'N')),
-        };
-
         Ok(SSWSortModule {
             name,
             references,
@@ -693,7 +624,7 @@ impl SSWSortModule {
             length_minimum: *length_minimum,
             detect_chimera: *detect_chimera,
             length_by_annot,
-            weights_and_matrix,
+            score_params: score_params.clone(),
         })
     }
 }
@@ -757,7 +688,7 @@ mod tests {
             length_minimum:      25,
             reference_sequences: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../sswsort_res/flu.fasta"),
             detect_chimera:      true,
-            weights:             WEIGHTS,
+            score_params:        DEFAULT_PARAMS,
         };
         let module = SSWSortModule::new(&params).unwrap();
 
@@ -801,7 +732,7 @@ mod tests {
             length_minimum:      25,
             reference_sequences: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../sswsort_res/flu.fasta"),
             detect_chimera:      true,
-            weights:             WEIGHTS,
+            score_params:        DEFAULT_PARAMS,
         };
         let module = SSWSortModule::new(&params).unwrap();
 
