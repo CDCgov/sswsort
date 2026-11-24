@@ -9,7 +9,7 @@ use std::{
     path::{Path, PathBuf},
 };
 use zoe::{
-    alignment::{LocalProfiles, ProfileSets},
+    alignment::{LocalProfiles, ProfileSets, ScoreParams},
     data::{WeightMatrix, err::ResultWithErrorContext, fasta::Fasta, nucleotides::ToDNA, records::GetAnnotation},
     iter_utils::ProcessResultsExt,
     prelude::*,
@@ -365,16 +365,8 @@ impl SSWSortModule {
             return ClassificationResult::none();
         }
 
-        // Validity: Profile creation will be successful because sequence is
-        // non-empty and alignment parameters are pre-defined constants
-        // satisfying the requirements
-        let query_profile = LocalProfiles::new_with_w512(
-            sequence,
-            &self.weights_and_matrix.matrix,
-            self.weights_and_matrix.weights.gap_open,
-            self.weights_and_matrix.weights.gap_extend,
-        )
-        .expect("The profile could not be created");
+        let score_params = self.weights_and_matrix.score_params();
+        let query_profile = LocalProfiles::new_with_w512(sequence, &score_params);
 
         let taxa = self
             .references
@@ -422,16 +414,8 @@ impl SSWSortModule {
             return [ClassificationResult::none(), ClassificationResult::none()];
         }
 
-        // Validity: Profile creation will be successful because sequence is
-        // non-empty and alignment parameters are pre-defined constants
-        // satisfying the requirements
-        let query_profile = LocalProfiles::new_with_w512(
-            sequence,
-            &self.weights_and_matrix.matrix,
-            self.weights_and_matrix.weights.gap_open,
-            self.weights_and_matrix.weights.gap_extend,
-        )
-        .expect("The profile could not be created");
+        let score_params = self.weights_and_matrix.score_params();
+        let query_profile = LocalProfiles::new_with_w512(sequence, &score_params);
 
         let taxa = self
             .references
@@ -643,6 +627,13 @@ impl<'de> Deserialize<'de> for Weights {
 pub struct WeightsAndMatrix {
     pub weights: Weights,
     pub matrix:  WeightMatrix<'static, i8, 5>,
+}
+
+impl WeightsAndMatrix {
+    /// Returns the validated alignment scoring parameters for this module.
+    fn score_params(&self) -> ScoreParams<'_, i8, 5> {
+        ScoreParams::new(&self.matrix, self.weights.gap_open, self.weights.gap_extend).expect("Weights are validated")
+    }
 }
 
 impl SSWSortModule {
